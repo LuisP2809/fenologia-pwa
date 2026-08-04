@@ -1,3 +1,12 @@
+const cleanPayloadChunk=(value,path)=>{
+  const raw=String(value??'').replace(/^\uFEFF/,'').trim();
+  const candidates=raw.match(/[A-Za-z0-9+/=_-]{32,}/g)||[];
+  if(!candidates.length)throw new Error(`El archivo ${path} no contiene un bloque válido.`);
+  return candidates.sort((a,b)=>b.length-a.length)[0]
+    .replace(/-/g,'+')
+    .replace(/_/g,'/');
+};
+
 const normalizeBase64=value=>{
   let clean=String(value??'')
     .replace(/^\uFEFF/,'')
@@ -5,6 +14,8 @@ const normalizeBase64=value=>{
     .replace(/-/g,'+')
     .replace(/_/g,'/')
     .replace(/[^A-Za-z0-9+/=]/g,'');
+  const gzipStart=clean.indexOf('H4sI');
+  if(gzipStart>=0)clean=clean.slice(gzipStart);
   clean=clean.replace(/=+$/,'');
   clean+='='.repeat((4-(clean.length%4))%4);
   return clean;
@@ -24,9 +35,10 @@ const read=async paths=>{
   const parts=[];
   for(const path of paths){
     const separator=path.includes('?')?'&':'?';
-    const response=await fetch(`${path}${separator}v=0.2.1`,{cache:'no-store'});
+    const response=await fetch(`${path}${separator}v=0.2.2`,{cache:'no-store'});
     if(!response.ok)throw new Error(`No se pudo cargar ${path} (${response.status}).`);
-    parts.push(await response.text());
+    const text=await response.text();
+    parts.push(cleanPayloadChunk(text,path));
   }
   return parts.join('');
 };
