@@ -7,57 +7,30 @@
   }
 
   function readFilter(){
-    const fallback = {mode:'today',from:localIsoDate(),to:localIsoDate()};
+    const current = localIsoDate();
     try{
       const saved = JSON.parse(localStorage.getItem(FILTER_KEY) || 'null');
-      return {...fallback,...(saved || {})};
+      return {
+        from: saved?.from || current,
+        to: saved?.to || current
+      };
     }catch{
-      return fallback;
+      return {from:current,to:current};
     }
   }
 
   const exportFilter = readFilter();
 
   function saveFilter(){
-    localStorage.setItem(FILTER_KEY, JSON.stringify(exportFilter));
-  }
-
-  function dateAtNoon(value){
-    return new Date(`${value}T12:00:00`);
-  }
-
-  function addDays(date, days){
-    const next = new Date(date);
-    next.setDate(next.getDate() + days);
-    return next;
-  }
-
-  function periodBounds(){
-    const todayValue = localIsoDate();
-    const todayDate = dateAtNoon(todayValue);
-
-    if(exportFilter.mode === 'today') return {from:todayValue,to:todayValue,label:'Hoy'};
-    if(exportFilter.mode === 'yesterday'){
-      const yesterday = localIsoDate(addDays(todayDate,-1));
-      return {from:yesterday,to:yesterday,label:'Ayer'};
-    }
-    if(exportFilter.mode === 'week'){
-      const weekday = todayDate.getDay() || 7;
-      const monday = addDays(todayDate,1-weekday);
-      return {from:localIsoDate(monday),to:todayValue,label:'Semana actual'};
-    }
-    if(exportFilter.mode === 'range'){
-      return {from:exportFilter.from || '',to:exportFilter.to || '',label:'Rango personalizado'};
-    }
-    return {from:null,to:null,label:'Todos los registros'};
+    localStorage.setItem(FILTER_KEY, JSON.stringify({from:exportFilter.from,to:exportFilter.to}));
   }
 
   function periodValidation(){
-    const bounds = periodBounds();
-    if(exportFilter.mode === 'range' && (!bounds.from || !bounds.to)){
+    const bounds = {from:exportFilter.from || '',to:exportFilter.to || ''};
+    if(!bounds.from || !bounds.to){
       return {ok:false,message:'Selecciona la fecha inicial y final.',bounds};
     }
-    if(bounds.from && bounds.to && bounds.from > bounds.to){
+    if(bounds.from > bounds.to){
       return {ok:false,message:'La fecha inicial no puede ser posterior a la fecha final.',bounds};
     }
     return {ok:true,bounds};
@@ -67,7 +40,6 @@
     const validation = periodValidation();
     if(!validation.ok) return [];
     const {from,to} = validation.bounds;
-    if(!from && !to) return state.records.slice();
     return state.records.filter(record => record.date && record.date >= from && record.date <= to);
   }
 
@@ -82,27 +54,18 @@
     return `${day}_${month}_${year.slice(-2)}`;
   }
 
-  function actualDateRange(records){
-    const dates = records.map(record => record.date).filter(Boolean).sort();
-    if(!dates.length) return null;
-    return {from:dates[0],to:dates[dates.length-1]};
-  }
-
-  function exportFileName(type, records){
-    const actual = actualDateRange(records);
+  function exportFileName(type, bounds){
     const prefix = type === 'fenologia' ? 'Fenologia' : 'Biometria';
-    if(!actual) return `${prefix}.csv`;
-    if(actual.from === actual.to) return `${prefix}-${formatFileDate(actual.from)}.csv`;
-    return `${prefix}-${formatFileDate(actual.from)} al ${formatFileDate(actual.to)}.csv`;
+    if(bounds.from === bounds.to) return `${prefix}-${formatFileDate(bounds.from)}.csv`;
+    return `${prefix}-${formatFileDate(bounds.from)} al ${formatFileDate(bounds.to)}.csv`;
   }
 
   function selectedPeriodText(){
     const validation = periodValidation();
     if(!validation.ok) return validation.message;
-    const {bounds} = validation;
-    if(!bounds.from && !bounds.to) return 'Todos los registros disponibles';
-    if(bounds.from === bounds.to) return formatDisplayDate(bounds.from);
-    return `${formatDisplayDate(bounds.from)} al ${formatDisplayDate(bounds.to)}`;
+    const {from,to} = validation.bounds;
+    if(from === to) return formatDisplayDate(from);
+    return `${formatDisplayDate(from)} al ${formatDisplayDate(to)}`;
   }
 
   function updateExportPeriodSummary(){
@@ -113,9 +76,6 @@
     const records = validation.ok ? filteredRecords() : [];
     const lots = new Set(records.map(record => record.lot).filter(Boolean)).size;
     const fields = new Set(records.map(record => record.field).filter(Boolean)).size;
-
-    const custom = panel.querySelector('.export-custom-range');
-    if(custom) custom.hidden = exportFilter.mode !== 'range';
 
     const period = panel.querySelector('#export-period-text');
     const count = panel.querySelector('#export-record-count');
@@ -129,7 +89,7 @@
     if(fieldCount) fieldCount.textContent = String(fields);
     if(warning){
       warning.textContent = validation.ok
-        ? (records.length ? 'La exportación incluirá únicamente estos registros.' : 'No hay evaluaciones en el periodo seleccionado.')
+        ? (records.length ? 'La exportación incluirá únicamente estos registros.' : 'No hay evaluaciones en el rango seleccionado.')
         : validation.message;
       warning.classList.toggle('error', !validation.ok || records.length === 0);
     }
@@ -141,23 +101,13 @@
   }
 
   function periodPanelHtml(){
-    const mode = exportFilter.mode;
     return `<section class="panel export-period-panel">
       <div class="export-period-heading">
         <div class="export-period-icon">📅</div>
-        <div><span>PERIODO A EXPORTAR</span><h2>Selecciona uno o varios días</h2><p>“Hoy” está seleccionado por defecto para evitar mezclar fechas accidentalmente.</p></div>
+        <div><span>PERIODO A EXPORTAR</span><h2>Selecciona el rango de fechas</h2><p>Para exportar un solo día, coloca la misma fecha en “Desde” y “Hasta”.</p></div>
       </div>
       <div class="export-period-controls">
-        <label>Periodo
-          <select id="export-period-mode">
-            <option value="today" ${mode==='today'?'selected':''}>Hoy</option>
-            <option value="yesterday" ${mode==='yesterday'?'selected':''}>Ayer</option>
-            <option value="week" ${mode==='week'?'selected':''}>Semana actual</option>
-            <option value="range" ${mode==='range'?'selected':''}>Rango personalizado</option>
-            <option value="all" ${mode==='all'?'selected':''}>Todos los registros</option>
-          </select>
-        </label>
-        <div class="export-custom-range" ${mode==='range'?'':'hidden'}>
+        <div class="export-custom-range">
           <label>Desde<input id="export-date-from" type="date" value="${esc(exportFilter.from)}"></label>
           <label>Hasta<input id="export-date-to" type="date" value="${esc(exportFilter.to)}"></label>
         </div>
@@ -173,7 +123,7 @@
 
   const previousSidebar = sidebar;
   sidebar = function exportFilterSidebar(){
-    return previousSidebar().replace(/Versión\s+[0-9.]+/,'Versión 0.5.2');
+    return previousSidebar().replace(/Versión\s+[0-9.]+/,'Versión 0.5.3');
   };
 
   const previousExportView = exportView;
@@ -201,7 +151,7 @@
     if(!validation.ok) return showToast(validation.message);
 
     const records = filteredRecords();
-    if(!records.length) return showToast('No hay evaluaciones para exportar en el periodo seleccionado.');
+    if(!records.length) return showToast('No hay evaluaciones para exportar en el rango seleccionado.');
 
     const headers = type === 'fenologia' ? FENO_HEADERS : BIO_HEADERS;
     const rowBuilder = type === 'fenologia' ? fenologyRow : biometryRow;
@@ -209,17 +159,11 @@
     if(rows.some(row => row.length !== headers.length)) return showToast('No se pudo validar la estructura de exportación.');
 
     const csv = '\ufeff' + [headers,...rows].map(row => row.map(csvCell).join(';')).join('\r\n');
-    downloadFile(exportFileName(type,records),csv,'text/csv;charset=utf-8');
+    downloadFile(exportFileName(type,validation.bounds),csv,'text/csv;charset=utf-8');
     showToast(`${records.length} evaluación(es) exportadas en ${headers.length} columnas.`);
   };
 
   document.addEventListener('change', event => {
-    if(event.target.id === 'export-period-mode'){
-      exportFilter.mode = event.target.value;
-      saveFilter();
-      updateExportPeriodSummary();
-      return;
-    }
     if(event.target.id === 'export-date-from'){
       exportFilter.from = event.target.value;
       saveFilter();
