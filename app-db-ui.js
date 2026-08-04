@@ -1,6 +1,4 @@
 (() => {
-  const APP_VERSION = '0.6.0';
-
   function migrationDate(info){
     if(!info?.migratedAt) return 'No disponible';
     return new Date(info.migratedAt).toLocaleString('es-PE');
@@ -17,7 +15,7 @@
         <p>${fallback?'El dispositivo está utilizando temporalmente el almacenamiento anterior. Los registros siguen disponibles.':'Los registros se guardan en una base local preparada para mayor cantidad de evaluaciones.'}</p>
       </div>
       <div class="db-status-metrics">
-        <div><b>${state.records.length}</b><span>Registros</span></div>
+        <div><b id="db-record-count">${state.records.length}</b><span>Registros</span></div>
         <div><b>${migration?.legacyKeysPreserved?'Sí':'—'}</b><span>Copia anterior</span></div>
       </div>
       <div class="db-status-detail">
@@ -26,6 +24,21 @@
       </div>
       <button type="button" class="secondary" id="verify-db-storage">Verificar almacenamiento</button>
     </section>`;
+  }
+
+  function countIndexedDbRecords(){
+    return new Promise((resolve,reject) => {
+      const request = indexedDB.open('fenologia-pwa',1);
+      request.onsuccess = () => {
+        const db = request.result;
+        const transaction = db.transaction('records','readonly');
+        const countRequest = transaction.objectStore('records').count();
+        countRequest.onsuccess = () => resolve(countRequest.result);
+        countRequest.onerror = () => reject(countRequest.error || new Error('No se pudo contar los registros.'));
+        transaction.oncomplete = () => db.close();
+      };
+      request.onerror = () => reject(request.error || new Error('No se pudo abrir IndexedDB.'));
+    });
   }
 
   const previousSidebar = sidebar;
@@ -48,16 +61,32 @@
     const button = event.target.closest('#verify-db-storage');
     button.disabled = true;
     button.textContent = 'Verificando…';
-    await window.FenologiaDB.flush();
-    const status = await window.FenologiaDB.status();
-    const message = status.fallbackMode
-      ? 'La aplicación está operando con el almacenamiento de compatibilidad.'
-      : `${state.records.length} registro(s) confirmados en el almacenamiento local.`;
-    showToast(message);
-    button.disabled = false;
-    button.textContent = 'Verificar almacenamiento';
-    const live = document.querySelector('#db-live-status');
-    if(live) live.textContent = status.fallbackMode ? 'Compatibilidad activa' : `Verificado: ${new Date().toLocaleTimeString('es-PE')}`;
+    try{
+      await window.FenologiaDB.flush();
+      const status = await window.FenologiaDB.status();
+      const storedCount = status.fallbackMode ? state.records.length : await countIndexedDbRecords();
+      const screenCount = state.records.length;
+      const matches = storedCount === screenCount;
+      const message = status.fallbackMode
+        ? 'La aplicación está operando con el almacenamiento de compatibilidad.'
+        : matches
+          ? `${storedCount} registro(s) confirmados correctamente en IndexedDB.`
+          : `Revisión pendiente: pantalla ${screenCount}, IndexedDB ${storedCount}.`;
+      showToast(message);
+      const count = document.querySelector('#db-record-count');
+      if(count) count.textContent = String(storedCount);
+      const live = document.querySelector('#db-live-status');
+      if(live) live.textContent = status.fallbackMode
+        ? 'Compatibilidad activa'
+        : matches
+          ? `Verificado: ${new Date().toLocaleTimeString('es-PE')}`
+          : 'La cantidad guardada no coincide; registra un respaldo antes de continuar.';
+    }catch(error){
+      showToast(error.message || 'No se pudo verificar el almacenamiento.');
+    }finally{
+      button.disabled = false;
+      button.textContent = 'Verificar almacenamiento';
+    }
   });
 
   window.addEventListener('fenologia-db-status',event => {
