@@ -20,19 +20,30 @@ function bindAssignments(){ const f=$('#assignment-form'); const fill=(s,l)=>{s.
 
 function render(){
   if(!state.session) return loginView();
-  const views={home:homeView,evaluate:evaluateView,records:recordsView,export:exportView,consolidate:consolidateView,map:mapView,charts:chartsView,users:usersView,catalogs:catalogsView};
+  const views={home:homeView,evaluate:evaluateView,records:recordsView,'record-detail':recordDetailView,export:exportView,consolidate:consolidateView,map:mapView,charts:chartsView,users:usersView,catalogs:catalogsView};
   (views[state.view]||homeView)();
 }
 
 document.addEventListener('click',e=>{
   const view=e.target.closest('[data-view]')?.dataset.view;
-  if(view){state.view=view;render();return;}
+  if(view){
+    if(view==='evaluate') state.editingId=null;
+    state.view=view;render();return;
+  }
   const record=e.target.closest('[data-record]')?.dataset.record;
-  if(record){showToast(`Registro ${record} seleccionado.`);return;}
-  if(e.target.closest('#logout')){localStorage.removeItem('fenologia-session');state.session=null;render();}
-  if(e.target.closest('#export-csv')||e.target.closest('#export-bio')) exportCsv();
-  if(e.target.closest('#backup')){downloadFile('respaldo-fenologia.json',JSON.stringify({records:state.records,assignments:state.assignments},null,2),'application/json');showToast('Respaldo descargado.');}
-  if(e.target.closest('#clear-records')){if(confirm('¿Eliminar todos los registros locales?')){state.records=[];save();render();showToast('Datos locales eliminados.');}}
+  if(record){state.selectedRecordId=record;state.view='record-detail';render();return;}
+  if(e.target.closest('#edit-record')){state.editingId=state.selectedRecordId;state.view='evaluate';render();return;}
+  if(e.target.closest('#cancel-evaluation')){const hadEdit=Boolean(state.editingId);state.editingId=null;state.view=hadEdit&&state.selectedRecordId?'record-detail':'records';render();return;}
+  if(e.target.closest('#logout')){localStorage.removeItem('fenologia-session');state.session=null;state.editingId=null;state.selectedRecordId=null;render();return;}
+  if(e.target.closest('#export-csv')){exportExact('fenologia');return;}
+  if(e.target.closest('#export-bio')){exportExact('biometria');return;}
+  if(e.target.closest('#backup')){createBackup();return;}
+  if(e.target.closest('#import-backup')){$('#backup-file')?.click();return;}
+  if(e.target.closest('#clear-records')){
+    const check=canClearRecords();if(!check.ok)return showToast(check.message);
+    if(confirm('Se eliminarán los registros locales respaldados. ¿Deseas continuar?')){state.records=[];state.selectedRecordId=null;save();render();showToast('Datos locales eliminados.');}
+    return;
+  }
   if(e.target.closest('#save-assignment')){const f=$('#assignment-form');if(!f.lot.value)return showToast('Selecciona un lote.');state.assignments[f.lot.value]=$$('#variety-checks input:checked').map(x=>x.value);save();showToast('Variedades actualizadas.');}
 });
 document.addEventListener('submit',e=>{
@@ -42,6 +53,9 @@ document.addEventListener('submit',e=>{
 });
 document.addEventListener('input',e=>{
   if(e.target.id==='record-search'||e.target.id==='record-date'){const q=($('#record-search')?.value||'').toLowerCase();const date=$('#record-date')?.value||'';const list=state.records.filter(r=>(!date||r.date===date)&&(!q||[r.lot,r.farm,r.variety,r.field].join(' ').toLowerCase().includes(q)));$('#records-container').innerHTML=recordTable(list);}
+});
+document.addEventListener('change',e=>{
+  if(e.target.id==='backup-file'&&e.target.files?.[0]){importBackup(e.target.files[0]);e.target.value='';}
 });
 window.addEventListener('online',render);window.addEventListener('offline',render);
 
