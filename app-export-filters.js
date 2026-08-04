@@ -173,7 +173,7 @@
 
   const previousSidebar = sidebar;
   sidebar = function exportFilterSidebar(){
-    return previousSidebar().replace('Versión 0.5','Versión 0.5.1');
+    return previousSidebar().replace(/Versión\s+[0-9.]+/,'Versión 0.5.2');
   };
 
   const previousExportView = exportView;
