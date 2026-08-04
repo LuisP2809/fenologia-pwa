@@ -13,7 +13,9 @@ const state = {
   records: JSON.parse(localStorage.getItem('fenologia-records') || '[]'),
   assignments: JSON.parse(localStorage.getItem('fenologia-assignments') || '{}'),
   catalog: null,
-  view: 'home'
+  view: 'home',
+  editingId: null,
+  selectedRecordId: null
 };
 
 const icons = {
@@ -71,7 +73,7 @@ function sidebar(){
   ];
   if(isSupervisor()) items.push(['consolidate',icons.sync,'Consolidar'],['map',icons.map,'Mapa de avance'],['charts',icons.chart,'Gráficos']);
   if(isAdmin()) items.push(['users',icons.users,'Usuarios y roles'],['catalogs',icons.settings,'Catálogos']);
-  return `<aside class="sidebar"><nav>${items.map(([v,i,t])=>`<button data-view="${v}" class="${state.view===v?'active':''}"><span>${i}</span>${t}</button>`).join('')}</nav><div class="side-footer"><b>Versión 0.3</b><small>Guardado local activo</small></div></aside>`;
+  return `<aside class="sidebar"><nav>${items.map(([v,i,t])=>`<button data-view="${v}" class="${state.view===v?'active':''}"><span>${i}</span>${t}</button>`).join('')}</nav><div class="side-footer"><b>Versión 0.4</b><small>Guardado local activo</small></div></aside>`;
 }
 function shell(content){ return `${header()}<div class="workspace">${sidebar()}<main class="content">${content}</main></div>`; }
 function titleBlock(kicker,title,text,action=''){ return `<div class="page-title"><div><span>${kicker}</span><h1>${title}</h1><p>${text}</p></div>${action}</div>`; }
