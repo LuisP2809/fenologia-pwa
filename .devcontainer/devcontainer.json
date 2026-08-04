@@ -1,12 +1,18 @@
 {
   "name": "Fenología PWA - Vista previa",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    }
+  },
   "forwardPorts": [8000],
   "portsAttributes": {
     "8000": {
       "label": "Vista previa Fenología",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "openBrowser",
+      "visibility": "private"
     }
   },
-  "postStartCommand": "nohup python3 -m http.server 8000 > /tmp/fenologia-preview.log 2>&1 &"
+  "postStartCommand": "nohup python3 -m http.server 8000 --bind 0.0.0.0 > /tmp/fenologia-preview.log 2>&1 &"
 }
