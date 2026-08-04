@@ -1,0 +1,12 @@
+{
+  "name": "Fenología PWA - Vista previa",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Vista previa Fenología",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postStartCommand": "nohup python3 -m http.server 8000 > /tmp/fenologia-preview.log 2>&1 &"
+}
