@@ -1,29 +1,24 @@
-# Fenología PWA · versión 0.1
+# Fenología PWA · versión visual 0.2
 
-Prototipo funcional offline-first creado a partir del archivo `FENOLOGIA.xlsx` y de las decisiones aprobadas para los roles Evaluador, Supervisor y Administrador.
+PWA offline-first creada a partir de `FENOLOGIA.xlsx` y de los visualizadores aprobados para los roles Evaluador, Supervisor y Administrador.
 
-## Incluye
+## Qué incorpora esta versión
 
-- PWA instalable con `manifest` y `service worker`.
-- Funcionamiento sin conexión después de la primera carga.
-- Inicio de sesión local por nombre y DNI/PIN.
-- DNI guardado como hash en la base local de demostración.
-- Roles: Evaluador, Supervisor y Administrador.
-- 255 lotes importados desde el Excel.
-- Filtros dependientes: Campo → Fundo → Módulo → Turno-Lote.
-- Catálogo de variedades editable por el administrador.
-- Asignación y retiro de variedades por lote sin modificar código; los históricos se conservan.
-- Cuadrantes Norte, Sur, Este y Oeste.
-- Contador de planta reiniciado por fecha + evaluador + lote + variedad + cuadrante.
-- Registro de enteros positivos y cero.
-- 17 estadios fenológicos y secciones complementarias.
-- Biometría normalizada para 35 frutos con D.L, D.EA y D.EB.
-- Guardado local en IndexedDB.
-- Exportación CSV compatible con Excel:
-  - Fenología: 44 columnas.
-  - Biometría: 124 columnas.
-- Respaldo JSON y limpieza protegida.
-- Pantalla preparada para integrar GeoJSON con clave `LOTE`.
+- Inicio de sesión con una presentación visual renovada.
+- Panel principal diferente según el rol.
+- Menú del evaluador con Registro, Detalle y Gestión de datos.
+- Formulario organizado mediante secciones desplegables para no saturar la pantalla.
+- Filtros dependientes Campo → Fundo → Módulo → Turno-Lote → Variedad.
+- Contador de planta por fecha, evaluador, lote, variedad y cuadrante.
+- Registro de los 17 estadios fenológicos.
+- Secciones de evolución de yemas, senescencia, brotamiento, floración, cuaja, panícula, biometría y caída de fruta.
+- Biometría de 35 frutos con D.L, D.EA y D.EB.
+- Detalle de registros guardados localmente.
+- Exportaciones de Fenología y Biometría con estructuras de 44 y 124 columnas.
+- Panel del supervisor con consolidación, resumen, mapa y gráficos visuales de muestra.
+- Panel administrativo para usuarios, catálogos y variedades por lote.
+- Variedades activables o desactivables por lote sin modificar código.
+- Funcionamiento offline mediante service worker y almacenamiento local.
 
 ## Usuarios de demostración
 
@@ -33,18 +28,16 @@ Prototipo funcional offline-first creado a partir del archivo `FENOLOGIA.xlsx` y
 | Supervisor | Supervisor Demo | 11223344 |
 | Evaluador | Evaluador Demo | 87654321 |
 
-## Cómo abrirlo
+## Vista previa en Codespaces
 
-La PWA debe abrirse desde un servidor web; no directamente con doble clic en `index.html`.
+La rama de revisión es:
 
-### Opción rápida con Python
-
-```bash
-python -m http.server 8080
+```text
+agent/version-inicial-pwa
 ```
 
-Después abre `http://localhost:8080`.
+El Codespace abre automáticamente el puerto 8000. Después de traer cambios con `git pull`, abre la pestaña **Puertos** y usa el enlace del puerto 8000.
 
-## Alcance de esta versión
+## Estado del proyecto
 
-Esta versión valida la estructura local, los filtros, el formulario, los roles, la asignación de variedades por lote y los formatos de salida. Los cambios administrativos se guardan en el dispositivo actual; la sincronización entre dispositivos se incorporará en la versión conectada. Todavía no incluye servidor de sincronización, importación real de archivos XLSX, consolidación multiusuario, gráficos definitivos ni renderizado del GeoJSON.
+Esta versión está orientada a validar diseño, navegación y flujo offline. La importación real de XLSX, consolidación completa, activación de usuarios mediante enlace, sincronización entre dispositivos y renderizado del GeoJSON se implementarán en siguientes iteraciones.
