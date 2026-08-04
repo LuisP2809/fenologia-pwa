@@ -1,4 +1,4 @@
-const CACHE='fenologia-v0.3-direct';
+const CACHE='fenologia-v0.4-evaluador';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./data/catalogos.json','./app-core.js','./app-eval.js','./app-admin.js','./css-core.css','./css-ui.css','./css-extra.css'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()))});
