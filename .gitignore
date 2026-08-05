@@ -4,5 +4,7 @@ android/
 dist/
 *.keystore
 *.jks
+*.p12
+.private-signing-backup/
 .env
 .DS_Store
