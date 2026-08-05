@@ -86,13 +86,13 @@ jobs:
       - name: Preparar archivo descargable
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.12.1-debug.apk
-          sha256sum dist/Fenologia-0.12.1-debug.apk > dist/Fenologia-0.12.1-debug.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.12.2-debug.apk
+          sha256sum dist/Fenologia-0.12.2-debug.apk > dist/Fenologia-0.12.2-debug.sha256
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fenologia-APK-0.12.1
+          name: Fenologia-APK-0.12.2
           path: dist/*
           retention-days: 30
           if-no-files-found: error
