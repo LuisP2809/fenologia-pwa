@@ -5,7 +5,7 @@
     if(state.view==='charts'&&isSupervisor()&&!window.FenologiaStageAnalytics?.state?.active){
       const selected=document.querySelector('#chart-tab-select')?.value;
       if(selected){
-        document.querySelector(`[data-chart-tab="${CSS.escape(selected)}"]`)?.classList.add('active');
+        document.querySelector(`[data-chart-tab="${selected}"]`)?.classList.add('active');
       }
     }
     return result;
