@@ -29,14 +29,16 @@ jobs:
           import base64
           import gzip
           import json
+          import os
           from pathlib import Path
 
           path = Path('data/lotes-mapa.geojson')
+          output = Path(os.environ['GITHUB_OUTPUT'])
           payload = json.loads(path.read_text(encoding='utf-8'))
 
           if payload.get('encoding') != 'gzip-base64':
               print('El archivo ya es GeoJSON normal.')
-              with open('${GITHUB_OUTPUT}', 'a', encoding='utf-8') as out:
+              with output.open('a', encoding='utf-8') as out:
                   out.write('changed=false\n')
               raise SystemExit(0)
 
@@ -64,7 +66,7 @@ jobs:
               encoding='utf-8'
           )
 
-          with open('${GITHUB_OUTPUT}', 'a', encoding='utf-8') as out:
+          with output.open('a', encoding='utf-8') as out:
               out.write('changed=true\n')
 
           print(f'GeoJSON validado: {len(features)} geometrías, {activos} lotes activos.')
