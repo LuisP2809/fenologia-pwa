@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.7.3';
+  const APP_VERSION = '0.7.4';
   const scripts = [
     'app-core.js',
     'app-eval.js',
