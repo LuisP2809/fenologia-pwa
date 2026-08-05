@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.8.0';
+  const APP_VERSION = '0.8.1';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -12,6 +12,7 @@
     'app-supervisor-role.js',
     'app-supervisor-unified.js',
     'app-release.js',
+    'app-map-decoder-fix.js',
     'app-map.js'
   ];
 
