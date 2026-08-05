@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.8.2';
+  const APP_VERSION = '0.8.3';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -22,6 +22,43 @@
     app.innerHTML = `<main class="db-loading-page"><section class="db-loading-card"><div class="db-loading-icon">🌿</div><span>FENOLOGÍA</span><h1>${message}</h1><p>${detail}</p><div class="db-loading-bar"><i></i></div></section></main>`;
   }
 
+  async function resetCodespacesWorker(){
+    if(!location.hostname.endsWith('.app.github.dev')) return false;
+    const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
+    if(sessionStorage.getItem(marker)==='done') return false;
+
+    loadingView('Actualizando entorno de prueba','Retirando una copia antigua que estaba bloqueando el mapa…');
+    let changed=false;
+
+    try{
+      if('serviceWorker' in navigator){
+        const registrations=await navigator.serviceWorker.getRegistrations();
+        if(registrations.length){
+          await Promise.all(registrations.map(registration=>registration.unregister()));
+          changed=true;
+        }
+      }
+      if('caches' in window){
+        const names=await caches.keys();
+        if(names.length){
+          await Promise.all(names.map(name=>caches.delete(name)));
+          changed=true;
+        }
+      }
+    }catch(error){
+      console.warn('No se pudo limpiar completamente el entorno de Codespaces:',error);
+    }
+
+    sessionStorage.setItem(marker,'done');
+    if(changed || navigator.serviceWorker?.controller){
+      const next=new URL(location.href);
+      next.searchParams.set('fresh',APP_VERSION);
+      location.replace(next.href);
+      return true;
+    }
+    return false;
+  }
+
   function loadScript(path){
     return new Promise((resolve,reject) => {
       const script = document.createElement('script');
@@ -34,6 +71,8 @@
   }
 
   async function start(){
+    if(await resetCodespacesWorker()) return;
+
     loadingView('Preparando tus datos');
     const result = await window.FenologiaDB.prepare();
     loadingView(
