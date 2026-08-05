@@ -1,7 +1,6 @@
 (() => {
-  const APP_VERSION = '0.7.2';
+  const APP_VERSION = '0.7.3';
   const IMPORT_HISTORY_KEY = 'supervisor-import-history-v1';
-  const DELETION_HISTORY_KEY = 'supervisor-deletion-history-v1';
   const LAST_BACKUP_KEY = 'fenologia-supervisor-last-backup';
 
   const isSupervisorOnly = () => state.session?.role === 'Supervisor';
@@ -25,7 +24,7 @@
       </section>
       <section class="panel"><div class="panel-head"><div><span>ACCESOS DEL SUPERVISOR</span><h2>¿Qué deseas revisar?</h2></div></div>
         <div class="actions-grid supervisor-home-actions">
-          ${actionCard('consolidate',icons.sync,'Consolidar','Importa, revisa, exporta, respalda y administra la base.','Principal')}
+          ${actionCard('consolidate',icons.sync,'Consolidar','Importa, revisa, exporta y respalda la base.','Principal')}
           ${actionCard('map',icons.map,'Mapa de avance','Consulta los lotes evaluados en el periodo seleccionado.')}
           ${actionCard('charts',icons.chart,'Gráficos','Revisa los indicadores de la información consolidada.')}
         </div>
@@ -36,7 +35,7 @@
   function backupPanelHtml(){
     const lastBackup = localStorage.getItem(LAST_BACKUP_KEY);
     return `<section class="panel supervisor-backup-panel">
-      <div class="panel-head"><div><span>RESPALDO Y RECUPERACIÓN</span><h2>Protege la base consolidada</h2><p>El respaldo incluye todos los registros, las asignaciones y los historiales del Supervisor.</p></div><span class="supervisor-backup-status ${lastBackup?'ok':'pending'}">${lastBackup?`Último: ${new Date(lastBackup).toLocaleString('es-PE')}`:'Respaldo pendiente'}</span></div>
+      <div class="panel-head"><div><span>RESPALDO Y RECUPERACIÓN</span><h2>Protege la base consolidada</h2><p>El respaldo incluye todos los registros, las asignaciones y el historial de consolidaciones.</p></div><span class="supervisor-backup-status ${lastBackup?'ok':'pending'}">${lastBackup?`Último: ${new Date(lastBackup).toLocaleString('es-PE')}`:'Respaldo pendiente'}</span></div>
       <div class="supervisor-backup-actions">
         <button type="button" class="primary" id="supervisor-create-full-backup">🛡️ Crear respaldo completo</button>
         <button type="button" class="secondary" id="supervisor-restore-full-backup">↻ Restaurar respaldo</button>
@@ -48,13 +47,16 @@
 
   function injectUnifiedTools(){
     if(!isSupervisorOnly() || state.view !== 'consolidate') return;
+
+    // Se retiró la eliminación manual de registros para evitar borrados accidentales.
+    document.querySelector('.supervisor-data-management')?.remove();
+    document.querySelector('.supervisor-delete-overlay')?.remove();
     document.querySelector('.supervisor-export-explainer')?.remove();
+
     if(document.querySelector('.supervisor-backup-panel')) return;
 
     const exportPanel = document.querySelector('.supervisor-export-panel');
-    const management = document.querySelector('.supervisor-data-management');
     if(exportPanel) exportPanel.insertAdjacentHTML('afterend',backupPanelHtml());
-    else if(management) management.insertAdjacentHTML('beforebegin',backupPanelHtml());
     else document.querySelector('main.content')?.insertAdjacentHTML('beforeend',backupPanelHtml());
   }
 
@@ -62,7 +64,6 @@
     try{
       await window.FenologiaDB?.flush?.();
       const importHistory = await window.FenologiaDB?.getSetting?.(IMPORT_HISTORY_KEY) || [];
-      const deletionHistory = await window.FenologiaDB?.getSetting?.(DELETION_HISTORY_KEY) || [];
       const createdAt = new Date().toISOString();
       const payload = {
         type:'fenologia-supervisor-backup',
@@ -71,8 +72,7 @@
         createdBy:{id:state.session.id,name:state.session.name},
         records:state.records,
         assignments:state.assignments,
-        importHistory,
-        deletionHistory
+        importHistory
       };
       downloadFile(`Respaldo-Supervisor-${shortDate(createdAt)}.json`,JSON.stringify(payload,null,2),'application/json');
       localStorage.setItem(LAST_BACKUP_KEY,createdAt);
@@ -99,7 +99,6 @@
       save();
       await window.FenologiaDB?.flush?.();
       if(Array.isArray(payload.importHistory)) await window.FenologiaDB?.setSetting?.(IMPORT_HISTORY_KEY,payload.importHistory);
-      if(Array.isArray(payload.deletionHistory)) await window.FenologiaDB?.setSetting?.(DELETION_HISTORY_KEY,payload.deletionHistory);
       localStorage.setItem(LAST_BACKUP_KEY,new Date().toISOString());
       state.view = 'consolidate';
       render();
@@ -112,7 +111,7 @@
 
   const priorSidebar = sidebar;
   sidebar = function unifiedSupervisorSidebar(){
-    let html = priorSidebar().replace(/Versión\s+[0-9.]+/,'Versión 0.7.2');
+    let html = priorSidebar().replace(/Versión\s+[0-9.]+/,'Versión 0.7.3');
     if(!isSupervisorOnly()) return html;
     html = html.replace(/<button data-view="export"[\s\S]*?<\/button>/,'');
     return html;
