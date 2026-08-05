@@ -1,0 +1,85 @@
+name: Construir APK Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/version-inicial-pwa
+    paths:
+      - '*.html'
+      - '*.js'
+      - '*.css'
+      - '*.webmanifest'
+      - 'data/**'
+      - 'icons/**'
+      - 'assets/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'capacitor.config.json'
+      - '.github/workflows/build-android-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: APK de prueba
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Validar PWA
+        run: npm run verify:pwa
+
+      - name: Preparar aplicación web
+        run: npm run build:web
+
+      - name: Crear proyecto Android
+        run: npx cap add android
+
+      - name: Generar iconos y pantalla inicial
+        run: >-
+          npx @capacitor/assets generate --android --assetPath assets
+          --iconBackgroundColor '#07552F'
+          --iconBackgroundColorDark '#043D25'
+          --splashBackgroundColor '#F3F7F2'
+          --splashBackgroundColorDark '#043D25'
+
+      - name: Sincronizar Capacitor
+        run: npx cap sync android
+
+      - name: Construir APK
+        run: |
+          chmod +x android/gradlew
+          npm run apk:debug
+
+      - name: Preparar archivo descargable
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.12.0-debug.apk
+          sha256sum dist/Fenologia-0.12.0-debug.apk > dist/Fenologia-0.12.0-debug.sha256
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fenologia-APK-0.12.0
+          path: dist/*
+          retention-days: 30
+          if-no-files-found: error
