@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.8.0', URL=`./data/lotes-mapa.geojson?v=${VERSION}`, W=1200, H=760, PAD=32;
+  const VERSION='0.8.2', MAP_PATH='data/lotes-mapa.geojson', W=1200, H=760, PAD=32;
   const iso=(d=new Date())=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
   const m={data:null,loading:null,error:'',from:iso(),to:iso(),field:'',farm:'',module:'',variety:'',evaluator:'',lot:'',zoom:1,x:0,y:0,drag:null};
   const roles=()=>['Supervisor','Administrador'].includes(state.session?.role);
@@ -11,20 +11,86 @@
 
   async function unpack(payload){
     if(payload?.encoding!=='gzip-base64') return payload;
-    if(typeof DecompressionStream!=='function') throw Error('Actualiza Chrome para visualizar el mapa.');
+    if(typeof DecompressionStream!=='function') throw Error('El navegador necesita una versión reciente de Chrome para abrir el mapa.');
     const bin=atob(payload.data||''), bytes=new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
     const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
     return JSON.parse(await new Response(stream).text());
   }
+
+  async function parseMapResponse(response,source){
+    if(!response) throw Error(`No hubo respuesta desde ${source}.`);
+    if(!response.ok) throw Error(`El archivo del mapa respondió ${response.status} desde ${source}.`);
+    const text=await response.text();
+    if(!text.trim()) throw Error(`El archivo del mapa está vacío en ${source}.`);
+    if(/^\s*</.test(text)) throw Error(`El servidor devolvió una página HTML en lugar del GeoJSON desde ${source}.`);
+    try{return JSON.parse(text);}catch{throw Error(`El contenido recibido desde ${source} no es JSON válido.`);}
+  }
+
+  async function fetchWithTimeout(url,timeout=12000){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),timeout);
+    try{
+      const response=await fetch(url,{cache:'reload',credentials:'same-origin',signal:controller.signal});
+      return await parseMapResponse(response,url);
+    }finally{clearTimeout(timer);}
+  }
+
+  async function loadFromNetwork(){
+    const urls=[
+      new URL(MAP_PATH,location.href).href,
+      new URL(`${MAP_PATH}?v=${VERSION}`,location.href).href,
+      new URL(`${MAP_PATH}?v=0.8.0`,location.href).href
+    ];
+    let lastError=null;
+    for(const url of [...new Set(urls)]){
+      try{return await fetchWithTimeout(url);}catch(error){lastError=error;}
+    }
+    throw lastError||Error('No se pudo solicitar el archivo del mapa.');
+  }
+
+  async function loadFromCache(){
+    if(!('caches' in window)) return null;
+    try{
+      const direct=await caches.match(MAP_PATH,{ignoreSearch:true});
+      if(direct) return await parseMapResponse(direct,'la copia offline');
+      const names=await caches.keys();
+      for(const name of names){
+        const cache=await caches.open(name);
+        const requests=await cache.keys();
+        const request=requests.find(item=>{
+          try{return new URL(item.url).pathname.endsWith(`/${MAP_PATH}`);}catch{return false;}
+        });
+        if(request){
+          const response=await cache.match(request);
+          if(response) return await parseMapResponse(response,`el caché ${name}`);
+        }
+      }
+    }catch(error){console.warn('No se pudo leer la copia offline del mapa:',error);}
+    return null;
+  }
+
   function load(){
     if(m.data) return Promise.resolve(m.data);
     if(m.loading) return m.loading;
-    m.loading=fetch(URL,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error(`No se pudo cargar el mapa (${r.status}).`);return r.json();})
-      .then(unpack).then(data=>{if(data?.type!=='FeatureCollection'||!Array.isArray(data.features))throw Error('GeoJSON inválido.');m.data=data;m.error='';return data;})
-      .catch(e=>{m.error=e.message||'No se pudo cargar el mapa.';throw e;}).finally(()=>m.loading=null);
+    m.loading=(async()=>{
+      let payload=null;
+      let networkError=null;
+      try{payload=await loadFromNetwork();}
+      catch(error){networkError=error;payload=await loadFromCache();}
+      if(!payload){
+        const reason=networkError?.name==='AbortError'
+          ? 'La descarga del mapa agotó el tiempo de espera.'
+          : networkError?.message||'No se pudo contactar al servidor.';
+        throw Error(`${reason} Verifica que la terminal continúe ejecutando el servidor y vuelve a abrir el puerto.`);
+      }
+      const data=await unpack(payload);
+      if(data?.type!=='FeatureCollection'||!Array.isArray(data.features)) throw Error('El archivo cargado no contiene una colección GeoJSON válida.');
+      m.data=data;m.error='';return data;
+    })().catch(error=>{m.error=error.message||'No se pudo cargar el mapa.';throw error;}).finally(()=>m.loading=null);
     return m.loading;
   }
+
   function featureOk(f){
     const p=f.properties||{};
     if(m.field&&p.CAMPO!==m.field)return false;
@@ -127,7 +193,7 @@
   }
   function readFilters(){['from','to','field','farm','module','variety','evaluator'].forEach(k=>m[k]=document.querySelector(`#map-${k}`)?.value||'');}
   const oldMap=mapView;mapView=function(){return roles()?renderPage():oldMap();};
-  const oldSide=sidebar;sidebar=function(){return oldSide().replace(/Versión\s+[0-9.]+/,'Versión 0.8.0');};
+  const oldSide=sidebar;sidebar=function(){return oldSide().replace(/Versión\s+[0-9.]+/,'Versión 0.8.2');};
   document.addEventListener('change',e=>{if(state.view!=='map'||!roles()||!['map-from','map-to','map-field','map-farm','map-module','map-variety','map-evaluator'].includes(e.target.id))return;readFilters();if(e.target.id==='map-field'){m.farm='';m.module='';m.variety='';}if(e.target.id==='map-farm')m.module='';m.lot='';fit();renderPage();});
   document.addEventListener('click',e=>{
     if(state.view!=='map'||!roles())return;
