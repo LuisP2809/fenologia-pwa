@@ -87,7 +87,13 @@
         : 'IndexedDB no estuvo disponible; se conservará el almacenamiento anterior.'
     );
 
-    for(const path of scripts) await loadScript(path);
+    for(const path of scripts){
+      await loadScript(path);
+      if(path === 'app-map-inline-source.js'){
+        loadingView('Validando mapa de lotes','Comprobando que los 253 lotes coincidan con el archivo aprobado…');
+        await window.__FENOLOGIA_MAP_VALIDATION;
+      }
+    }
 
     if(!window.__FENOLOGIA_MAP_INFO?.ready){
       throw new Error('Los bloques internos del mapa no se cargaron completamente.');
