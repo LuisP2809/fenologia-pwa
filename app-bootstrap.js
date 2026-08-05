@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.10.1';
+  const APP_VERSION = '0.10.2';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -97,7 +97,7 @@
         await window.__FENOLOGIA_MAP_VALIDATION;
       }
       if(path === 'app-admin-complete.js'){
-        loadingView('Preparando Administrador','Cargando usuarios, campañas, catálogos y paquetes locales…');
+        loadingView('Preparando Administrador','Cargando usuarios, campañas, catálogos y seguridad local…');
         await window.FenologiaAdmin?.ready();
       }
     }
