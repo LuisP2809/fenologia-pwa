@@ -11,9 +11,9 @@
     'app-supervisor.js',
     'app-supervisor-role.js',
     'app-supervisor-unified.js',
-    'app-release.js',
     'app-map-decoder-fix.js',
-    'app-map.js'
+    'app-map.js',
+    'app-release.js'
   ];
 
   function loadingView(message,detail='Preparando el almacenamiento local seguro…'){
