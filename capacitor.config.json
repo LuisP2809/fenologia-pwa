@@ -1,0 +1,8 @@
+{
+  "appId": "pe.fenologia.campo",
+  "appName": "Fenología",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
