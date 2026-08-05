@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.8.3';
+  const APP_VERSION = '0.8.4';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -11,7 +11,12 @@
     'app-supervisor.js',
     'app-supervisor-role.js',
     'app-supervisor-unified.js',
-    'app-map-decoder-fix.js',
+    'data/map-inline-1.js',
+    'data/map-inline-2.js',
+    'data/map-inline-3.js',
+    'data/map-inline-4.js',
+    'data/map-inline-5.js',
+    'app-map-inline-source.js',
     'app-map.js',
     'app-release.js'
   ];
@@ -27,7 +32,7 @@
     const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
     if(sessionStorage.getItem(marker)==='done') return false;
 
-    loadingView('Actualizando entorno de prueba','Retirando una copia antigua que estaba bloqueando el mapa…');
+    loadingView('Actualizando entorno de prueba','Retirando copias antiguas antes de cargar el mapa validado…');
     let changed=false;
 
     try{
@@ -83,6 +88,11 @@
     );
 
     for(const path of scripts) await loadScript(path);
+
+    if(!window.__FENOLOGIA_MAP_INFO?.ready){
+      throw new Error('Los bloques internos del mapa no se cargaron completamente.');
+    }
+
     window.dispatchEvent(new CustomEvent('fenologia-app-ready',{detail:{version:APP_VERSION,storage:result}}));
   }
 
