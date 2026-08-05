@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Fenología">
+  <defs>
+    <linearGradient id="bg" x1="54" y1="48" x2="458" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B7442"/>
+      <stop offset="1" stop-color="#043D25"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="140" y1="106" x2="374" y2="402" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EAF7D9"/>
+      <stop offset="1" stop-color="#9DD36A"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M386 101c-125 5-225 49-258 140-30 79 12 146 84 162 84 19 164-38 187-126 18-68 5-128-13-176Z" fill="url(#leaf)"/>
+  <path d="M146 381c59-91 126-156 222-231" fill="none" stroke="#07552F" stroke-width="27" stroke-linecap="round"/>
+  <path d="M242 286c-27-11-54-14-83-8M295 232c3-29 11-57 27-84M201 337c-21-3-41 0-60 8M341 187c4-18 10-34 22-48" fill="none" stroke="#07552F" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="403" cy="389" r="54" fill="#F4B942"/>
+  <path d="m379 389 17 17 32-38" fill="none" stroke="#173A24" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
