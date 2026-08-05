@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.12.1';
+  const APP_VERSION = '0.12.2';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -23,6 +23,8 @@
     'app-admin-role-cleanup.js',
     'app-dynamic-parameters.js',
     'app-dynamic-supervisor.js',
+    'app-stage-analytics.js',
+    'app-stage-analytics-ui.js',
     'app-platform.js',
     'app-release.js'
   ];
@@ -38,7 +40,7 @@
     const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
     if(sessionStorage.getItem(marker)==='done') return false;
 
-    loadingView('Actualizando entorno de prueba','Preparando el guardado y uso compartido de exportaciones…');
+    loadingView('Actualizando entorno de prueba','Preparando diferencia y distribución semanal de estadios…');
     let changed=false;
 
     try{
