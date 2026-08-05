@@ -7,18 +7,19 @@ La aplicación se instala desde un navegador compatible mediante el botón **Ins
 ### Prueba local
 
 ```bash
-python3 -m http.server 8028 --bind 0.0.0.0
+python3 -m http.server 8029 --bind 0.0.0.0
 ```
 
-Abrir el puerto `8028`, esperar la carga completa y comprobar:
+Abrir el puerto `8029`, esperar la carga completa y comprobar:
 
-1. Versión `0.12.0`.
+1. Versión `0.12.1`.
 2. Botón **Instalar** en navegador.
 3. Funcionamiento sin conexión después de la primera carga.
 4. Conservación de evaluaciones tras cerrar y volver a abrir.
 5. Aviso **Actualizar ahora** cuando exista una versión nueva.
+6. Exportación y opción de compartir desde Android.
 
-## APK Android
+## APK Android de prueba
 
 Fenología utiliza Capacitor para empaquetar los mismos archivos de la PWA dentro de Android.
 
@@ -54,33 +55,17 @@ npm run apk:debug
 
 ## Construcción automática en GitHub
 
-El flujo **Construir APK Android** genera automáticamente un APK cuando se actualiza la rama `agent/version-inicial-pwa` o cuando se ejecuta manualmente.
+El flujo **Construir APK Android** genera automáticamente un APK de prueba cuando se actualiza la rama `agent/version-inicial-pwa` o cuando se ejecuta manualmente.
 
 El resultado aparece como artefacto con el nombre:
 
 ```text
-Fenologia-APK-0.12.0
+Fenologia-APK-0.12.1
 ```
 
 Incluye:
 
-- `Fenologia-0.12.0-debug.apk`
-- `Fenologia-0.12.0-debug.sha256`
+- `Fenologia-0.12.1-debug.apk`
+- `Fenologia-0.12.1-debug.sha256`
 
-## Antes de publicar formalmente
-
-El identificador Android actual es:
-
-```text
-pe.fenologia.campo
-```
-
-Debe confirmarse antes de publicar en una tienda, porque después de la primera publicación no conviene cambiarlo.
-
-La versión `debug` sirve para pruebas internas. Para distribución formal se deberá:
-
-1. Crear un almacén de firma privado.
-2. Configurar secretos de firma en GitHub.
-3. Generar un APK o AAB de lanzamiento.
-4. Definir política de privacidad y ficha de la aplicación.
-5. Probar instalación, actualización, exportación, importación y trabajo offline en dispositivos reales.
+Esta modalidad está destinada a pruebas internas. Antes de reemplazar una instalación que contenga información importante, crea un respaldo JSON y exporta los CSV correspondientes.
