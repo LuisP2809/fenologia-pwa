@@ -21,7 +21,9 @@
 
   async function waitForCatalog(){
     for(let attempt = 0; attempt < 100; attempt += 1){
-      if(window.state?.catalog?.lotesAgrupados) return window.state.catalog;
+      if(typeof state !== 'undefined' && state.catalog?.lotesAgrupados){
+        return state.catalog;
+      }
       await new Promise(resolve => setTimeout(resolve, 50));
     }
     throw new Error('No se pudo cargar el catálogo actualizado de lotes.');
