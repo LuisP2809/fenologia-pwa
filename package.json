@@ -10,7 +10,10 @@
     "android:init": "npm run build:web && npx cap add android",
     "android:sync": "npm run build:web && npx cap sync android",
     "android:open": "npm run android:sync && npx cap open android",
-    "apk:debug": "node scripts/build-apk.mjs"
+    "apk:debug": "node scripts/build-apk.mjs",
+    "android:signing:setup": "bash scripts/configurar-firma-android.sh",
+    "android:release:configure": "node scripts/configure-android-version.mjs",
+    "android:release:trigger": "node scripts/trigger-android-release.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.4.2",
