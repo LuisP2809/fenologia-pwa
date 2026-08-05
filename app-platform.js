@@ -1,5 +1,5 @@
 (() => {
-  const PLATFORM_VERSION = '0.12.0';
+  const PLATFORM_VERSION = '0.12.1';
   let installPrompt = null;
   let serviceWorkerRegistration = null;
   let updateAvailable = false;
@@ -12,6 +12,11 @@
   const isStandalone = () => isNative() ||
     window.matchMedia?.('(display-mode: standalone)').matches ||
     window.navigator.standalone === true;
+
+  const nativePlugin = name => window.Capacitor?.Plugins?.[name] || null;
+  const safeFileName = value => String(value || 'archivo.txt')
+    .replace(/[\\/:*?"<>|]+/g,'_')
+    .replace(/\s+/g,'_');
 
   async function requestPersistentStorage(){
     try{
@@ -51,10 +56,18 @@
     content?.insertAdjacentHTML('afterbegin',updateBanner());
   }
 
+  function decorateExportHelp(){
+    if(!isNative() || !['export','consolidate'].includes(state?.view) || document.querySelector('.platform-export-help')) return;
+    const content=document.querySelector('.content');
+    const title=content?.querySelector('.page-title');
+    title?.insertAdjacentHTML('afterend',`<section class="panel platform-export-help"><div><span>EXPORTACIÓN EN ANDROID</span><h2>Guardar y compartir</h2><p>Cada archivo se guardará en <b>Documentos/Fenología</b> y luego se abrirá el panel para compartirlo por WhatsApp, correo, Drive u otra aplicación.</p></div></section>`);
+  }
+
   function decorate(){
     decorateHeader();
     decorateLogin();
     decorateUpdate();
+    decorateExportHelp();
     document.documentElement.dataset.platform=isNative()?'android':isStandalone()?'pwa':'web';
   }
 
@@ -82,21 +95,103 @@
     return result;
   };
 
+  async function writeNativeExport(name,content){
+    const Filesystem=nativePlugin('Filesystem');
+    if(!Filesystem) throw new Error('El complemento de archivos no está disponible en esta versión del APK.');
+
+    const fileName=safeFileName(name);
+    const data=String(content ?? '');
+    let persistent=null;
+    let persistentError=null;
+
+    try{
+      persistent=await Filesystem.writeFile({
+        path:`Fenologia/${fileName}`,
+        data,
+        directory:'DOCUMENTS',
+        encoding:'utf8',
+        recursive:true
+      });
+    }catch(error){
+      persistentError=error;
+      console.warn('No se pudo guardar la copia en Documentos:',error);
+    }
+
+    const temporary=await Filesystem.writeFile({
+      path:`FenologiaCompartir/${fileName}`,
+      data,
+      directory:'CACHE',
+      encoding:'utf8',
+      recursive:true
+    });
+
+    return {fileName,persistent,persistentError,temporary};
+  }
+
+  async function shareNativeExport(result){
+    const Share=nativePlugin('Share');
+    if(!Share) throw new Error('El complemento para compartir no está disponible en esta versión del APK.');
+    const canShare=await Share.canShare?.().catch(()=>({value:true}));
+    if(canShare && canShare.value===false) throw new Error('Android no permite compartir archivos en este dispositivo.');
+    await Share.share({
+      title:result.fileName,
+      text:'Archivo exportado desde Fenología.',
+      files:[result.temporary.uri],
+      dialogTitle:'Compartir archivo de Fenología'
+    });
+  }
+
+  async function exportNative(name,content,type){
+    try{
+      const result=await writeNativeExport(name,content,type);
+      try{
+        await shareNativeExport(result);
+      }catch(error){
+        if(!result.persistent) throw error;
+        console.warn('El archivo se guardó, pero no se abrió el panel de compartir:',error);
+      }
+
+      if(result.persistent){
+        showToast(`Guardado en Documentos/Fenología: ${result.fileName}`);
+      }else{
+        showToast('Archivo listo para compartir. Elige WhatsApp o “Guardar en archivos”.');
+      }
+      return result;
+    }catch(error){
+      console.error('No se pudo exportar desde Android:',error);
+      showToast(error.message || 'No se pudo guardar ni compartir el archivo.');
+      throw error;
+    }
+  }
+
+  async function shareWebFile(name,content,type){
+    if(!navigator.share || typeof File==='undefined') return false;
+    try{
+      const file=new File([content],name,{type});
+      if(navigator.canShare && !navigator.canShare({files:[file]})) return false;
+      await navigator.share({title:name,text:'Archivo exportado desde Fenología.',files:[file]});
+      return true;
+    }catch(error){
+      if(error?.name==='AbortError') return true;
+      console.warn('El navegador no pudo compartir el archivo:',error);
+      return false;
+    }
+  }
+
   const browserDownload=typeof downloadFile==='function'?downloadFile:null;
   if(browserDownload){
     downloadFile=function platformDownload(name,content,type='text/plain;charset=utf-8'){
-      if(isNative() && navigator.share && typeof File!=='undefined'){
-        try{
-          const file=new File([content],name,{type});
-          if(!navigator.canShare || navigator.canShare({files:[file]})){
-            navigator.share({title:name,files:[file]}).catch(error=>{
-              if(error?.name!=='AbortError') browserDownload(name,content,type);
-            });
-            return;
-          }
-        }catch(error){console.warn('No se pudo abrir el panel de compartir:',error);}
+      if(isNative()){
+        exportNative(name,content,type).catch(()=>{});
+        return;
       }
-      return browserDownload(name,content,type);
+
+      browserDownload(name,content,type);
+      if(/android|iphone|ipad|ipod/i.test(navigator.userAgent)){
+        shareWebFile(name,content,type).then(shared=>{
+          if(shared) showToast('Archivo descargado y panel de compartir abierto.');
+        });
+      }
     };
   }
 
@@ -187,6 +282,7 @@
     isNative,
     isStandalone,
     requestPersistentStorage,
+    exportFile:exportNative,
     registration:()=>serviceWorkerRegistration
   };
 
