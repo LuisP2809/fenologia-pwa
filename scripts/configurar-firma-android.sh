@@ -4,6 +4,8 @@ set -euo pipefail
 REPOSITORY="${GITHUB_REPOSITORY:-LuisP2809/fenologia-pwa}"
 ALIAS="fenologia_release"
 BACKUP_DIR="${HOME}/fenologia-firma-oficial"
+WORKSPACE_DIR="${GITHUB_WORKSPACE:-$(pwd)}"
+DOWNLOAD_DIR="${WORKSPACE_DIR}/.private-signing-backup"
 KEYSTORE_PATH="${BACKUP_DIR}/fenologia-release.jks"
 FINGERPRINT_PATH="${BACKUP_DIR}/certificado-sha256.txt"
 
@@ -87,6 +89,12 @@ printf '%s' "$CERT_SHA256" | gh secret set ANDROID_CERT_SHA256 --repo "$REPOSITO
 printf '%s\n' "$CERT_SHA256" > "$FINGERPRINT_PATH"
 chmod 600 "$FINGERPRINT_PATH"
 
+mkdir -p "$DOWNLOAD_DIR"
+chmod 700 "$DOWNLOAD_DIR"
+cp "$KEYSTORE_PATH" "$DOWNLOAD_DIR/fenologia-release.jks"
+cp "$FINGERPRINT_PATH" "$DOWNLOAD_DIR/certificado-sha256.txt"
+chmod 600 "$DOWNLOAD_DIR/fenologia-release.jks" "$DOWNLOAD_DIR/certificado-sha256.txt"
+
 unset KEYSTORE_BASE64 STORE_PASSWORD
 
 echo
@@ -98,6 +106,11 @@ echo "RESPALDO OBLIGATORIO:"
 echo "  $KEYSTORE_PATH"
 echo "  $FINGERPRINT_PATH"
 echo
+echo "COPIAS PARA DESCARGAR DESDE EL EXPLORADOR DE CODESPACES:"
+echo "  $DOWNLOAD_DIR/fenologia-release.jks"
+echo "  $DOWNLOAD_DIR/certificado-sha256.txt"
+echo
+echo "La carpeta .private-signing-backup está ignorada por Git."
 echo "Descarga esos dos archivos y guarda la contraseña en un administrador de contraseñas."
 echo "GitHub no permite recuperar el valor de los secretos después de guardarlos."
 echo
