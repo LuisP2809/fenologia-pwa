@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Convierte data/lotes-mapa.geojson de gzip-base64 a GeoJSON normal.
+"""Convierte y valida el mapa de Fenología.
 
-Es seguro ejecutarlo varias veces: si el archivo ya está normalizado, solo lo valida.
+Si la cadena gzip-base64 contiene exactamente un carácter adicional, prueba cada
+posición y acepta únicamente la variante que produce el GeoJSON esperado.
+Es seguro ejecutarlo varias veces.
 """
 
 from __future__ import annotations
@@ -44,6 +46,55 @@ def validate_geojson(data: object) -> dict:
     return data
 
 
+def decode_candidate(value: str) -> dict | None:
+    """Decodifica una variante y devuelve el GeoJSON solo si supera toda validación."""
+    padded = value + "=" * ((4 - len(value) % 4) % 4)
+    try:
+        compressed = base64.b64decode(padded, validate=True)
+        if not compressed.startswith(b"\x1f\x8b"):
+            return None
+        raw = gzip.decompress(compressed)
+        return validate_geojson(json.loads(raw.decode("utf-8")))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError, gzip.BadGzipFile):
+        return None
+    except Exception:
+        return None
+
+
+def decode_or_repair(encoded: str) -> tuple[dict, str]:
+    clean = "".join(encoded.split()).replace("-", "+").replace("_", "/").rstrip("=")
+
+    direct = decode_candidate(clean)
+    if direct is not None:
+        return direct, "La cadena comprimida era válida."
+
+    if len(clean) % 4 != 1:
+        raise ValueError(
+            "La cadena Base64 está dañada y no coincide con el caso reparable de un carácter adicional."
+        )
+
+    print(
+        f"Base64 con {len(clean)} caracteres: buscando automáticamente el carácter adicional…"
+    )
+
+    # La corrupción más común ocurre cerca del final; se revisa desde allí primero.
+    for attempt, index in enumerate(range(len(clean) - 1, -1, -1), start=1):
+        candidate = clean[:index] + clean[index + 1 :]
+        geojson = decode_candidate(candidate)
+        if geojson is not None:
+            removed = clean[index]
+            return (
+                geojson,
+                f"Cadena reparada: se retiró un carácter adicional en la posición {index + 1} ({removed!r}).",
+            )
+        if attempt % 2500 == 0:
+            print(f"  Revisadas {attempt:,} de {len(clean):,} posiciones…")
+
+    raise ValueError(
+        "No se pudo reconstruir el mapa retirando un solo carácter. Se necesita volver a cargar el GeoJSON original."
+    )
+
+
 def main() -> int:
     if not MAP_PATH.exists():
         print(f"ERROR: No se encontró {MAP_PATH}", file=sys.stderr)
@@ -53,13 +104,7 @@ def main() -> int:
         payload = json.loads(MAP_PATH.read_text(encoding="utf-8"))
 
         if isinstance(payload, dict) and payload.get("encoding") == "gzip-base64":
-            encoded = "".join(str(payload.get("data", "")).split())
-            encoded = encoded.replace("-", "+").replace("_", "/")
-            encoded += "=" * ((4 - len(encoded) % 4) % 4)
-
-            compressed = base64.b64decode(encoded)
-            raw = gzip.decompress(compressed)
-            geojson = validate_geojson(json.loads(raw.decode("utf-8")))
+            geojson, repair_message = decode_or_repair(str(payload.get("data", "")))
 
             backup = MAP_PATH.with_suffix(".geojson.comprimido.bak")
             if not backup.exists():
@@ -69,6 +114,7 @@ def main() -> int:
                 json.dumps(geojson, ensure_ascii=False, separators=(",", ":")),
                 encoding="utf-8",
             )
+            print(repair_message)
             print("Mapa normalizado correctamente.")
         else:
             geojson = validate_geojson(payload)
