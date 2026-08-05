@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.9.0';
+  const APP_VERSION = '0.10.0';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -19,6 +19,7 @@
     'app-map-inline-source.js',
     'app-map.js',
     'app-charts.js',
+    'app-admin-complete.js',
     'app-release.js'
   ];
 
@@ -33,7 +34,7 @@
     const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
     if(sessionStorage.getItem(marker)==='done') return false;
 
-    loadingView('Actualizando entorno de prueba','Retirando copias antiguas antes de cargar los gráficos reales…');
+    loadingView('Actualizando entorno de prueba','Retirando copias antiguas antes de cargar el Administrador completo…');
     let changed=false;
 
     try{
@@ -93,6 +94,10 @@
       if(path === 'app-map-inline-source.js'){
         loadingView('Validando mapa de lotes','Comprobando que los 254 lotes coincidan con la base actualizada…');
         await window.__FENOLOGIA_MAP_VALIDATION;
+      }
+      if(path === 'app-admin-complete.js'){
+        loadingView('Preparando Administrador','Cargando usuarios, campañas, catálogos y paquetes locales…');
+        await window.FenologiaAdmin?.ready();
       }
     }
 
