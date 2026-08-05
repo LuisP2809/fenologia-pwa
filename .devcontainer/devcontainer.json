@@ -1,10 +1,19 @@
 {
-  "name": "Fenología PWA - Vista previa",
+  "name": "Fenología PWA y Android",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3.12"
-    }
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "installMaven": false,
+      "installGradle": false
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "forwardPorts": [8000],
   "portsAttributes": {
@@ -14,5 +23,6 @@
       "visibility": "private"
     }
   },
+  "postCreateCommand": "npm install",
   "postStartCommand": "nohup python3 -m http.server 8000 --bind 0.0.0.0 > /tmp/fenologia-preview.log 2>&1 &"
 }
