@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.7.3';
+  const APP_VERSION = '0.7.4';
   const IMPORT_HISTORY_KEY = 'supervisor-import-history-v1';
   const LAST_BACKUP_KEY = 'fenologia-supervisor-last-backup';
 
@@ -48,7 +48,6 @@
   function injectUnifiedTools(){
     if(!isSupervisorOnly() || state.view !== 'consolidate') return;
 
-    // Se retiró la eliminación manual de registros para evitar borrados accidentales.
     document.querySelector('.supervisor-data-management')?.remove();
     document.querySelector('.supervisor-delete-overlay')?.remove();
     document.querySelector('.supervisor-export-explainer')?.remove();
@@ -111,7 +110,7 @@
 
   const priorSidebar = sidebar;
   sidebar = function unifiedSupervisorSidebar(){
-    let html = priorSidebar().replace(/Versión\s+[0-9.]+/,'Versión 0.7.3');
+    let html = priorSidebar().replace(/Versión\s+[0-9.]+/,'Versión 0.7.4');
     if(!isSupervisorOnly()) return html;
     html = html.replace(/<button data-view="export"[\s\S]*?<\/button>/,'');
     return html;
