@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.7.0';
+  const APP_VERSION = '0.7.1';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -8,7 +8,8 @@
     'app-workflow-patches.js',
     'app-export-filters.js',
     'app-db-ui.js',
-    'app-supervisor.js'
+    'app-supervisor.js',
+    'app-supervisor-role.js'
   ];
 
   function loadingView(message,detail='Preparando el almacenamiento local seguro…'){
