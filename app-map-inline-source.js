@@ -5,13 +5,12 @@
   const encoded = String(window.__FENOLOGIA_MAP_B64 || '');
 
   window.__FENOLOGIA_MAP_INFO = {
-    source: 'completo(1).geojson',
+    source: 'completo(1).geojson + FENOLOGIA(2).xlsx',
     originalPolygons: 296,
     normalizedFeatures: 254,
-    activeLots: 253,
-    referenceZones: 1,
+    activeLots: 254,
+    referenceZones: 0,
     omittedWithoutCode: 0,
-    rawGeojsonSha256: '45360766511bd55075df63ef254f8a66ad60fea3004ac5b9029996a58240b02c',
     encodedSha256: '',
     ready: false
   };
@@ -20,31 +19,117 @@
     .map(value => value.toString(16).padStart(2, '0'))
     .join('');
 
-  function installMapSource(){
-    const nativeFetch = window.fetch.bind(window);
-    const payload = JSON.stringify({
-      encoding: 'gzip-base64',
-      contentType: 'application/geo+json',
-      sha256: window.__FENOLOGIA_MAP_INFO.rawGeojsonSha256,
-      data: encoded
+  async function waitForCatalog(){
+    for(let attempt = 0; attempt < 100; attempt += 1){
+      if(window.state?.catalog?.lotesAgrupados) return window.state.catalog;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    throw new Error('No se pudo cargar el catálogo actualizado de lotes.');
+  }
+
+  function catalogIndex(catalog){
+    const index = new Map();
+    const grouped = catalog?.lotesAgrupados || {};
+
+    Object.entries(grouped).forEach(([field, farms]) => {
+      Object.entries(farms || {}).forEach(([farm, modules]) => {
+        Object.entries(modules || {}).forEach(([module, lots]) => {
+          (lots || []).forEach(lot => {
+            index.set(String(lot).trim(), {
+              CAMPO: field,
+              FUNDO: farm,
+              MODULO: module
+            });
+          });
+        });
+      });
     });
 
-    window.fetch = function fenologiaMapFetch(input, init) {
-      try {
+    return index;
+  }
+
+  async function decodeMap(){
+    if(typeof DecompressionStream !== 'function'){
+      throw new Error('El navegador necesita una versión reciente de Chrome para abrir el mapa.');
+    }
+
+    const binary = atob(encoded);
+    const bytes = new Uint8Array(binary.length);
+    for(let index = 0; index < binary.length; index += 1){
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    const stream = new Blob([bytes])
+      .stream()
+      .pipeThrough(new DecompressionStream('gzip'));
+    const text = await new Response(stream).text();
+    return JSON.parse(text);
+  }
+
+  function enrichMap(geojson, catalog){
+    if(geojson?.type !== 'FeatureCollection' || !Array.isArray(geojson.features)){
+      throw new Error('El mapa integrado no contiene una colección GeoJSON válida.');
+    }
+
+    const index = catalogIndex(catalog);
+    geojson.features.forEach(feature => {
+      const lot = String(feature?.properties?.LOTE || '').trim();
+      const metadata = index.get(lot);
+      feature.properties = feature.properties || {};
+
+      if(metadata){
+        Object.assign(feature.properties, metadata, {
+          LOTE: lot,
+          ACTIVO: true,
+          TIPO: 'LOTE'
+        });
+      }else{
+        feature.properties.ACTIVO = false;
+        feature.properties.TIPO = 'REFERENCIA';
+      }
+    });
+
+    const active = geojson.features.filter(feature => feature.properties?.ACTIVO).length;
+    const references = geojson.features.length - active;
+
+    if(geojson.features.length !== 254 || active !== 254){
+      throw new Error(
+        `La relación del mapa no coincide: ${geojson.features.length} geometrías y ${active} lotes activos.`
+      );
+    }
+
+    geojson.stats = {
+      ...(geojson.stats || {}),
+      lotesActivos: active,
+      zonasReferencia: references,
+      poligonosSinCodigoOmitidos: 0,
+      featuresOriginales: 296,
+      featuresNormalizadas: 254
+    };
+
+    return geojson;
+  }
+
+  function installMapSource(geojson){
+    const nativeFetch = window.fetch.bind(window);
+    const payload = JSON.stringify(geojson);
+
+    window.fetch = function fenologiaMapFetch(input, init){
+      try{
         const rawUrl = input instanceof Request ? input.url : String(input);
         const url = new URL(rawUrl, window.location.href);
 
-        if (url.pathname.endsWith(MAP_SUFFIX)) {
+        if(url.pathname.endsWith(MAP_SUFFIX)){
           return Promise.resolve(new Response(payload, {
             status: 200,
             headers: {
-              'Content-Type': 'application/json; charset=utf-8',
+              'Content-Type': 'application/geo+json; charset=utf-8',
               'Cache-Control': 'no-store',
-              'X-Fenologia-Map-Source': 'inline-validated'
+              'X-Fenologia-Map-Source': 'inline-catalog-validated'
             }
           }));
         }
-      } catch (error) {
+      }catch(error){
         console.warn('No se pudo interpretar la solicitud del mapa:', error);
       }
 
@@ -74,7 +159,10 @@
       throw new Error('La verificación del mapa no coincide con el archivo validado.');
     }
 
-    installMapSource();
+    const catalog = await waitForCatalog();
+    const geojson = enrichMap(await decodeMap(), catalog);
+    installMapSource(geojson);
+
     window.__FENOLOGIA_MAP_INFO.ready = true;
     return window.__FENOLOGIA_MAP_INFO;
   })();
