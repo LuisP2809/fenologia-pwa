@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.10.0';
+  const APP_VERSION = '0.10.1';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -20,6 +20,7 @@
     'app-map.js',
     'app-charts.js',
     'app-admin-complete.js',
+    'app-admin-role-cleanup.js',
     'app-release.js'
   ];
 
@@ -34,7 +35,7 @@
     const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
     if(sessionStorage.getItem(marker)==='done') return false;
 
-    loadingView('Actualizando entorno de prueba','Retirando copias antiguas antes de cargar el Administrador completo…');
+    loadingView('Actualizando entorno de prueba','Aplicando el menú administrativo simplificado…');
     let changed=false;
 
     try{
