@@ -1,5 +1,5 @@
 (() => {
-  const FORBIDDEN_ADMIN_VIEWS = new Set(['evaluate','records','record-detail','export']);
+  const FORBIDDEN_ADMIN_VIEWS = new Set(['evaluate','records','record-detail','export','admin-package']);
 
   function isAdministrator(){
     return state?.session?.role === 'Administrador';
@@ -7,7 +7,7 @@
 
   function removeAdminActions(root=document){
     if(!isAdministrator()) return;
-    root.querySelectorAll('[data-view="evaluate"],[data-view="records"],[data-view="export"]').forEach(element=>element.remove());
+    root.querySelectorAll('[data-view="evaluate"],[data-view="records"],[data-view="export"],[data-view="admin-package"]').forEach(element=>element.remove());
     root.querySelectorAll('#edit-record,#export-csv,#export-bio,#backup,#import-backup,#clear-records').forEach(element=>element.remove());
   }
 
@@ -32,7 +32,7 @@
     const pageTitle = document.querySelector('.page-title');
     const description = pageTitle?.querySelector('p');
     if(description){
-      description.textContent = 'Administra usuarios, catálogos, campañas, mapas, seguridad y paquetes de configuración.';
+      description.textContent = 'Administra usuarios, catálogos, campañas, mapas y seguridad de limpieza.';
     }
   };
 
