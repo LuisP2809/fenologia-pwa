@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.8.4';
+  const APP_VERSION = '0.8.5';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -90,7 +90,7 @@
     for(const path of scripts){
       await loadScript(path);
       if(path === 'app-map-inline-source.js'){
-        loadingView('Validando mapa de lotes','Comprobando que los 253 lotes coincidan con el archivo aprobado…');
+        loadingView('Validando mapa de lotes','Comprobando que los 254 lotes coincidan con la base actualizada…');
         await window.__FENOLOGIA_MAP_VALIDATION;
       }
     }
