@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.10.2';
+  const APP_VERSION = '0.11.0';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -21,6 +21,7 @@
     'app-charts.js',
     'app-admin-complete.js',
     'app-admin-role-cleanup.js',
+    'app-dynamic-parameters.js',
     'app-release.js'
   ];
 
@@ -35,7 +36,7 @@
     const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
     if(sessionStorage.getItem(marker)==='done') return false;
 
-    loadingView('Actualizando entorno de prueba','Aplicando el menú administrativo simplificado…');
+    loadingView('Actualizando entorno de prueba','Preparando los parámetros de evaluación configurables…');
     let changed=false;
 
     try{
@@ -99,6 +100,10 @@
       if(path === 'app-admin-complete.js'){
         loadingView('Preparando Administrador','Cargando usuarios, campañas, catálogos y seguridad local…');
         await window.FenologiaAdmin?.ready();
+      }
+      if(path === 'app-dynamic-parameters.js'){
+        loadingView('Preparando parámetros','Cargando las variables adicionales y sus reglas de evaluación…');
+        await window.FenologiaDynamicParameters?.ready();
       }
     }
 
