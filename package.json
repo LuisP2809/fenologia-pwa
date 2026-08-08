@@ -1,6 +1,6 @@
 {
   "name": "fenologia-pwa",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "private": true,
   "type": "module",
   "description": "Evaluaciones fenológicas y biométricas offline para campo.",
