@@ -64,6 +64,7 @@ jobs:
           node --check app-stage-analytics-ui.js
           node --check app-charts-refinement.js
           node --check app-xlsx-workflow.js
+          node --check app-xlsx-compat.js
 
       - name: Validar PWA
         run: npm run verify:pwa
