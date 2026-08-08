@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.12.3';
+  const APP_VERSION = '0.13.0';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -27,6 +27,7 @@
     'app-stage-analytics-ui.js',
     'app-charts-refinement.js',
     'app-platform.js',
+    'app-xlsx-workflow.js',
     'app-release.js'
   ];
 
@@ -41,7 +42,7 @@
     const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
     if(sessionStorage.getItem(marker)==='done') return false;
 
-    loadingView('Actualizando entorno de prueba','Aplicando la nueva organización de gráficos y comparaciones…');
+    loadingView('Actualizando entorno de prueba','Preparando el intercambio Excel entre PC y celular…');
     let changed=false;
 
     try{
