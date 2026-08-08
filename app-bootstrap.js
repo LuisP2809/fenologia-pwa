@@ -28,6 +28,7 @@
     'app-charts-refinement.js',
     'app-platform.js',
     'app-xlsx-workflow.js',
+    'app-xlsx-compat.js',
     'app-release.js'
   ];
 
