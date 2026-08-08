@@ -36,6 +36,7 @@ const ASSETS=[
   './app-charts-refinement.js?v=0.13.0',
   './app-platform.js?v=0.13.0',
   './app-xlsx-workflow.js?v=0.13.0',
+  './app-xlsx-compat.js?v=0.13.0',
   './app-release.js?v=0.13.0',
   './css-core.css?v=0.13.0',
   './css-ui.css?v=0.13.0',
