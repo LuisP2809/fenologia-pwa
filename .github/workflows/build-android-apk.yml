@@ -66,6 +66,7 @@ jobs:
           node --check app-xlsx-workflow.js
           node --check app-xlsx-compat.js
           node --check app-supervisor-file-analysis.js
+          node --check app-analysis-source-guard.js
 
       - name: Validar PWA
         run: npm run verify:pwa
