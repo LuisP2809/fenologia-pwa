@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.13.9';
+  const APP_VERSION = '0.13.10';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -48,7 +48,7 @@
     const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
     if(sessionStorage.getItem(marker)==='done') return false;
 
-    loadingView('Actualizando entorno de prueba','Unificando el acceso de usuarios y los perfiles de limpieza…');
+    loadingView('Actualizando entorno de prueba','Corrigiendo la apertura de Seguridad de limpieza…');
     let changed=false;
 
     try{
