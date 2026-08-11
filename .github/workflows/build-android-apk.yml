@@ -88,6 +88,12 @@ jobs:
           grep -Fq "button.textContent='Descargar acceso'" app-user-access-package.js
           grep -Fq "permissions.add('map')" app-user-access-package.js
 
+      - name: Validar estabilidad de Seguridad de limpieza
+        run: |
+          grep -Fq "button.textContent!=='Descargar acceso'" app-user-access-package.js
+          grep -Fq "heading.textContent!=='Evaluadores y códigos semanales'" app-user-access-package.js
+          grep -Fq "text.textContent!==accessText" app-user-access-package.js
+
       - name: Validar protección contra bucle de Consolidar
         run: grep -q "description.textContent!==CONSOLIDATE_DESCRIPTION" app-xlsx-compat.js
 
@@ -119,13 +125,13 @@ jobs:
       - name: Preparar archivo descargable
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.9-debug.apk
-          sha256sum dist/Fenologia-0.13.9-debug.apk > dist/Fenologia-0.13.9-debug.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.10-debug.apk
+          sha256sum dist/Fenologia-0.13.10-debug.apk > dist/Fenologia-0.13.10-debug.sha256
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fenologia-APK-0.13.9
+          name: Fenologia-APK-0.13.10
           path: dist/*
           retention-days: 30
           if-no-files-found: error
