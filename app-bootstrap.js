@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.13.5';
+  const APP_VERSION = '0.13.6';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -20,6 +20,7 @@
     'app-map.js',
     'app-charts.js',
     'app-admin-complete.js',
+    'app-admin-dni-fix.js',
     'app-admin-role-cleanup.js',
     'app-dynamic-parameters.js',
     'app-dynamic-supervisor.js',
@@ -46,7 +47,7 @@
     const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
     if(sessionStorage.getItem(marker)==='done') return false;
 
-    loadingView('Actualizando entorno de prueba','Corrigiendo la apertura de Consolidar y renovando la caché de la aplicación…');
+    loadingView('Actualizando entorno de prueba','Corrigiendo la validación del DNI de usuarios a 8 dígitos numéricos…');
     let changed=false;
 
     try{
