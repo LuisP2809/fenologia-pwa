@@ -1,17 +1,27 @@
 (() => {
-  const VERSION='0.13.1';
+  const VERSION='0.13.5';
+  const CONSOLIDATE_DESCRIPTION='Une únicamente los archivos Excel que selecciones. No guarda historial ni modifica los datos usados por los gráficos.';
 
   function enforceXlsxUi(){
     if(state.view!=='consolidate')return;
     const description=document.querySelector('.supervisor-upload div:nth-child(2) p');
     if(description){
-      description.dataset.dynamicNote='1';
-      description.textContent='Une únicamente los archivos Excel que selecciones. No guarda historial ni modifica los datos usados por los gráficos.';
+      if(description.dataset.dynamicNote!=='1') description.dataset.dynamicNote='1';
+      if(description.textContent!==CONSOLIDATE_DESCRIPTION) description.textContent=CONSOLIDATE_DESCRIPTION;
     }
-    document.querySelector('#export-consolidated-dynamic')?.setAttribute('hidden','');
+    const dynamicExport=document.querySelector('#export-consolidated-dynamic');
+    if(dynamicExport&&!dynamicExport.hasAttribute('hidden')) dynamicExport.setAttribute('hidden','');
   }
 
-  const observer=new MutationObserver(()=>enforceXlsxUi());
+  let scheduled=false;
+  const observer=new MutationObserver(()=>{
+    if(scheduled||state.view!=='consolidate')return;
+    scheduled=true;
+    queueMicrotask(()=>{
+      scheduled=false;
+      enforceXlsxUi();
+    });
+  });
   observer.observe(app,{childList:true,subtree:true});
 
   document.addEventListener('dragover',event=>{
