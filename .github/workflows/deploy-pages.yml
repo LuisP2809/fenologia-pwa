@@ -28,10 +28,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
 
       - name: Instalar dependencias
-        run: npm ci
+        run: npm install
 
       - name: Validar PWA
         run: npm run verify:pwa
