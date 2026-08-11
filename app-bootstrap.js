@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.13.8';
+  const APP_VERSION = '0.13.9';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -21,6 +21,7 @@
     'app-charts.js',
     'app-admin-complete.js',
     'app-admin-dni-fix.js',
+    'app-user-access-package.js',
     'app-admin-role-cleanup.js',
     'app-dynamic-parameters.js',
     'app-dynamic-supervisor.js',
@@ -47,7 +48,7 @@
     const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
     if(sessionStorage.getItem(marker)==='done') return false;
 
-    loadingView('Actualizando entorno de prueba','Aplicando el guardado verificado de usuarios y roles…');
+    loadingView('Actualizando entorno de prueba','Unificando el acceso de usuarios y los perfiles de limpieza…');
     let changed=false;
 
     try{
