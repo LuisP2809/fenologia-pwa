@@ -64,6 +64,7 @@ jobs:
           node --check app-map.js
           node --check app-admin-dni-fix.js
           node --check app-user-access-package.js
+          node --check app-evaluation-flow.js
           node --check app-stage-analytics.js
           node --check app-stage-analytics-ui.js
           node --check app-charts-refinement.js
@@ -72,6 +73,13 @@ jobs:
           node --check app-supervisor-file-analysis.js
           node --check app-analysis-source-guard.js
           node --check app-evaluator-navigation.js
+
+      - name: Validar flujo continuo de evaluación
+        run: |
+          grep -Fq "quadrant.required=false" app-evaluation-flow.js
+          grep -Fq "clearEvaluationVariables(form)" app-evaluation-flow.js
+          grep -Fq "clearNextEvaluationSelectors(form)" app-evaluation-flow.js
+          grep -Fq "form.querySelector('[name=\"variety\"]')" app-evaluation-flow.js
 
       - name: Validar DNI y guardado de usuario
         run: |
@@ -125,13 +133,13 @@ jobs:
       - name: Preparar archivo descargable
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.10-debug.apk
-          sha256sum dist/Fenologia-0.13.10-debug.apk > dist/Fenologia-0.13.10-debug.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.11-debug.apk
+          sha256sum dist/Fenologia-0.13.11-debug.apk > dist/Fenologia-0.13.11-debug.sha256
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fenologia-APK-0.13.10
+          name: Fenologia-APK-0.13.11
           path: dist/*
           retention-days: 30
           if-no-files-found: error
