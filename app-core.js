@@ -44,6 +44,7 @@ function countToday(){ return state.records.filter(r=>r.date===today()).length; 
 function lotsToday(){ return new Set(state.records.filter(r=>r.date===today()).map(r=>r.lot)).size; }
 function isAdmin(){ return state.session?.role==='Administrador'; }
 function isSupervisor(){ return ['Administrador','Supervisor'].includes(state.session?.role); }
+function isEvaluator(){ return state.session?.role==='Evaluador'; }
 
 function loginView(){
   app.innerHTML = `<main class="login-page">
@@ -79,6 +80,7 @@ function sidebar(){
   const items = [
     ['home',icons.home,'Inicio'],['evaluate',icons.clipboard,'Registro de evaluación'],['records',icons.detail,'Detalle de evaluación'],['export',icons.file,'Exportar e importar']
   ];
+  if(isEvaluator()) items.push(['map',icons.map,'Mapa de avance']);
   if(isSupervisor()) items.push(['consolidate',icons.sync,'Consolidar'],['map',icons.map,'Mapa de avance'],['charts',icons.chart,'Gráficos']);
   if(isAdmin()) items.push(['users',icons.users,'Usuarios y roles'],['catalogs',icons.settings,'Catálogos']);
   const storageText = window.FenologiaDB?.isFallback() ? 'Compatibilidad local' : 'IndexedDB activo';
@@ -104,7 +106,7 @@ function homeView(){
         ${actionCard('evaluate',icons.clipboard,'Registrar evaluación','Completa los datos del lote, estadios y biometría.','Principal')}
         ${actionCard('records',icons.detail,'Detalle de evaluaciones','Consulta, filtra y revisa los registros realizados.')}
         ${actionCard('export',icons.file,'Exportar e importar','Genera archivos para Excel o recupera un respaldo.')}
-        ${supervisor?actionCard('consolidate',icons.sync,'Consolidar evaluaciones','Reúne los archivos de todos los evaluadores.') : actionCard('records',icons.shield,'Datos protegidos','Los registros permanecen en tu dispositivo.')}
+        ${supervisor?actionCard('consolidate',icons.sync,'Consolidar evaluaciones','Reúne los archivos de todos los evaluadores.') : actionCard('map',icons.map,'Mapa de avance','Visualiza en el mapa los lotes que ya evaluaste y los que aún están pendientes.')}
       </div>
     </section>
     <section class="two-cols">
