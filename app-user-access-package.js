@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.13.9';
+  const VERSION='0.13.10';
   const CLEANUP_ADMIN_KEY='fenologia-cleanup-admin-profiles-v1';
   const CONFIG_KEY='admin-config-v1';
   const CACHE_KEY='fenologia-admin-config-cache-v1';
@@ -112,22 +112,24 @@
 
   function decorateLogin(){
     const button=document.querySelector('#login-import-config');
-    if(button) button.textContent='Importar acceso';
+    if(button&&button.textContent!=='Importar acceso') button.textContent='Importar acceso';
     const card=button?.closest('.config-login-import');
     const title=card?.querySelector('b');
     const text=card?.querySelector('p');
-    if(title&&!title.textContent.includes('configurado para')) title.textContent='Configurar este dispositivo';
-    if(text) text.textContent='Importa el archivo de acceso entregado por el Administrador.';
+    if(title&&!title.textContent.includes('configurado para')&&title.textContent!=='Configurar este dispositivo') title.textContent='Configurar este dispositivo';
+    const accessText='Importa el archivo de acceso entregado por el Administrador.';
+    if(text&&text.textContent!==accessText) text.textContent=accessText;
   }
 
   function decorateSecurity(){
     if(state?.session?.role!=='Administrador'||state.view!=='cleanup-security') return;
     document.querySelectorAll('[data-download-cleanup-profile]').forEach(button=>{
-      button.textContent='Descargar acceso';
-      button.title='Archivo completo para configurar el dispositivo e ingresar con nombre y DNI.';
+      if(button.textContent!=='Descargar acceso') button.textContent='Descargar acceso';
+      const title='Archivo completo para configurar el dispositivo e ingresar con nombre y DNI.';
+      if(button.title!==title) button.title=title;
     });
     const heading=document.querySelector('.security-profile-list')?.closest('.panel')?.querySelector('.panel-head h2');
-    if(heading) heading.textContent='Evaluadores y códigos semanales';
+    if(heading&&heading.textContent!=='Evaluadores y códigos semanales') heading.textContent='Evaluadores y códigos semanales';
     const head=document.querySelector('.security-profile-list')?.closest('.panel')?.querySelector('.panel-head>div');
     if(head&&!head.querySelector('.access-security-note')){
       const note=document.createElement('p');
@@ -179,7 +181,8 @@
   },true);
 
   const observer=new MutationObserver(mutations=>{
-    if(mutations.some(mutation=>mutation.addedNodes.length)) decorate();
+    if(!mutations.some(mutation=>mutation.addedNodes.length)) return;
+    decorate();
   });
   observer.observe(document.querySelector('#app')||document.body,{childList:true,subtree:true});
 
