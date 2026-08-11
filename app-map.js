@@ -2,7 +2,8 @@
   const VERSION='0.8.2', MAP_PATH='data/lotes-mapa.geojson', W=1200, H=760, PAD=32;
   const iso=(d=new Date())=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
   const m={data:null,loading:null,error:'',from:iso(),to:iso(),field:'',farm:'',module:'',variety:'',evaluator:'',lot:'',zoom:1,x:0,y:0,drag:null};
-  const roles=()=>['Supervisor','Administrador'].includes(state.session?.role);
+  const roles=()=>['Evaluador','Supervisor','Administrador'].includes(state.session?.role);
+  const evaluatorRole=()=>state.session?.role==='Evaluador';
   const uniq=a=>[...new Set(a.filter(Boolean))].sort((x,y)=>String(x).localeCompare(String(y),'es'));
   const active=()=>m.data?.features?.filter(f=>f.properties?.ACTIVO)||[];
   const refs=()=>m.data?.features?.filter(f=>!f.properties?.ACTIVO)||[];
@@ -104,13 +105,14 @@
     return true;
   }
   function recordOk(r){
+    if(evaluatorRole()&&r.evaluatorId!==state.session.id)return false;
     if(m.from&&(!r.date||r.date<m.from))return false;
     if(m.to&&(!r.date||r.date>m.to))return false;
     if(m.field&&r.field!==m.field)return false;
     if(m.farm&&r.farm!==m.farm)return false;
     if(m.module&&r.module!==m.module)return false;
     if(m.variety&&r.variety!==m.variety)return false;
-    if(m.evaluator&&(r.evaluatorId||r.evaluator||'')!==m.evaluator)return false;
+    if(!evaluatorRole()&&m.evaluator&&(r.evaluatorId||r.evaluator||'')!==m.evaluator)return false;
     return true;
   }
   function model(){
@@ -129,6 +131,7 @@
     const farms=uniq(af.filter(f=>!m.field||f.properties.CAMPO===m.field).map(f=>f.properties.FUNDO));
     const modules=uniq(af.filter(f=>(!m.field||f.properties.CAMPO===m.field)&&(!m.farm||f.properties.FUNDO===m.farm)).map(f=>f.properties.MODULO));
     const vars=m.field?uniq(state.catalog?.variedadesPorCampo?.[m.field]||[]):uniq(Object.values(state.catalog?.variedadesPorCampo||{}).flat());
+    const evaluatorFilter=evaluatorRole()?'':`<label>Evaluador<select id="map-evaluator"><option value="">Todos</option>${evaluators().map(x=>`<option value="${esc(x.v)}" ${m.evaluator===x.v?'selected':''}>${esc(x.l)}</option>`).join('')}</select></label>`;
     return `<section class="panel map-filters"><div class="panel-head"><div><span>FILTROS DEL MAPA</span><h2>Periodo y alcance</h2><p>Un lote se pinta de verde cuando tiene al menos una evaluación que cumple los filtros.</p></div><div><button class="secondary" id="map-today">Hoy</button><button class="link" id="map-clear">Limpiar</button></div></div>
       <div class="map-filter-grid">
         <label>Desde<span class="map-date"><input id="map-from" type="date" value="${esc(m.from)}"></span></label>
@@ -137,7 +140,7 @@
         <label>Fundo<select id="map-farm" ${m.field?'':'disabled'}>${opt(farms,m.farm)}</select></label>
         <label>Módulo<select id="map-module" ${m.farm?'':'disabled'}>${opt(modules,m.module)}</select></label>
         <label>Variedad<select id="map-variety">${opt(vars,m.variety)}</select></label>
-        <label>Evaluador<select id="map-evaluator"><option value="">Todos</option>${evaluators().map(x=>`<option value="${esc(x.v)}" ${m.evaluator===x.v?'selected':''}>${esc(x.l)}</option>`).join('')}</select></label>
+        ${evaluatorFilter}
       </div>${m.from&&m.to&&m.from>m.to?'<p class="map-warning">La fecha Desde no puede ser posterior a Hasta.</p>':''}</section>`;
   }
   function metrics(v){return `<section class="metrics-grid"><article class="metric"><div class="metric-icon">🗺️</div><div><strong>${v.visible.length}</strong><span>Lotes visibles</span><small>Según jerarquía</small></div></article><article class="metric"><div class="metric-icon">✓</div><div><strong>${v.evaluated.length}</strong><span>Lotes evaluados</span><small>En el periodo</small></div></article><article class="metric"><div class="metric-icon">○</div><div><strong>${v.pending}</strong><span>Lotes pendientes</span><small>Sin registros filtrados</small></div></article><article class="metric"><div class="metric-icon">📋</div><div><strong>${v.records.length}</strong><span>Evaluaciones</span><small>Registros encontrados</small></div></article></section>`;}
@@ -160,9 +163,11 @@
   }
   function renderPage(){
     if(!roles()){state.view='home';return render();}
-    if(!m.data){app.innerHTML=shell(`${titleBlock('SUPERVISOR','Mapa real de evaluaciones','Preparando polígonos…')}<section class="panel map-loading"><span>🗺️</span><h2>Cargando GeoJSON</h2></section>`);load().then(renderPage).catch(()=>app.innerHTML=shell(`${titleBlock('SUPERVISOR','Mapa real de evaluaciones','No se pudo cargar el mapa.')}<section class="panel map-loading"><span>⚠️</span><h2>${esc(m.error)}</h2><button class="primary" id="map-retry">Reintentar</button></section>`));return;}
+    const kicker=state.session.role==='Administrador'?'ADMINISTRADOR':state.session.role==='Supervisor'?'SUPERVISOR':'EVALUADOR';
+    const description=evaluatorRole()?'Visualiza en el mapa únicamente el avance de tus propias evaluaciones.':'Visualiza los polígonos del GeoJSON y el avance de la base consolidada.';
+    if(!m.data){app.innerHTML=shell(`${titleBlock(kicker,'Mapa de avance','Preparando polígonos…')}<section class="panel map-loading"><span>🗺️</span><h2>Cargando GeoJSON</h2></section>`);load().then(renderPage).catch(()=>app.innerHTML=shell(`${titleBlock(kicker,'Mapa de avance','No se pudo cargar el mapa.')}<section class="panel map-loading"><span>⚠️</span><h2>${esc(m.error)}</h2><button class="primary" id="map-retry">Reintentar</button></section>`));return;}
     const v=m.from&&m.to&&m.from>m.to?{...model(),records:[],byLot:new Map(),evaluated:[],pending:active().filter(featureOk).length,unmatched:[]}:model();
-    app.innerHTML=shell(`${titleBlock(state.session.role==='Administrador'?'ADMINISTRADOR':'SUPERVISOR','Mapa real de evaluaciones','Visualiza los polígonos del GeoJSON y el avance de la base consolidada.')}${filters()}${metrics(v)}${mapPanel(v)}${quality(v)}`);
+    app.innerHTML=shell(`${titleBlock(kicker,'Mapa de avance',description)}${filters()}${metrics(v)}${mapPanel(v)}${quality(v)}`);
     draw(v);
   }
   function polygons(g){return !g?[]:g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];}
