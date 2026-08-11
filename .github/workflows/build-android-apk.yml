@@ -74,6 +74,9 @@ jobs:
           node --check app-analysis-source-guard.js
           node --check app-evaluator-navigation.js
 
+      - name: Validar pantalla de ingreso sin demo
+        run: grep -Fq "document.querySelector('.demo-note')?.remove()" app-user-access-package.js
+
       - name: Validar flujo continuo de evaluación
         run: |
           grep -Fq "quadrant.required=false" app-evaluation-flow.js
@@ -143,13 +146,13 @@ jobs:
       - name: Preparar archivo descargable
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.12-debug.apk
-          sha256sum dist/Fenologia-0.13.12-debug.apk > dist/Fenologia-0.13.12-debug.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.13-debug.apk
+          sha256sum dist/Fenologia-0.13.13-debug.apk > dist/Fenologia-0.13.13-debug.sha256
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fenologia-APK-0.13.12
+          name: Fenologia-APK-0.13.13
           path: dist/*
           retention-days: 30
           if-no-files-found: error
