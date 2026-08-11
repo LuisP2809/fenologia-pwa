@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.13.12';
+  const VERSION='0.13.13';
   const CLEANUP_ADMIN_KEY='fenologia-cleanup-admin-profiles-v1';
   const CONFIG_KEY='admin-config-v1';
   const CACHE_KEY='fenologia-admin-config-cache-v1';
@@ -113,6 +113,7 @@
   }
 
   function decorateLogin(){
+    document.querySelector('.demo-note')?.remove();
     const button=document.querySelector('#login-import-config');
     if(button&&button.textContent!=='Importar acceso') button.textContent='Importar acceso';
     const card=button?.closest('.config-login-import');
