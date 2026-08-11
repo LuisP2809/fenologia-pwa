@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.13.3';
+  const APP_VERSION = '0.13.4';
   const scripts = [
     'app-core.js',
     'app-eval.js',
@@ -46,7 +46,7 @@
     const marker=`fenologia-codespaces-reset-${APP_VERSION}`;
     if(sessionStorage.getItem(marker)==='done') return false;
 
-    loadingView('Actualizando entorno de prueba','Preparando la navegación del Evaluador y el mapa de avance…');
+    loadingView('Actualizando entorno de prueba','Preparando la apertura directa del Mapa de avance…');
     let changed=false;
 
     try{
