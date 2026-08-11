@@ -38,6 +38,7 @@ const ASSETS=[
   './app-xlsx-workflow.js?v=0.13.1',
   './app-xlsx-compat.js?v=0.13.1',
   './app-supervisor-file-analysis.js?v=0.13.1',
+  './app-analysis-source-guard.js?v=0.13.1',
   './app-release.js?v=0.13.1',
   './css-core.css?v=0.13.1',
   './css-ui.css?v=0.13.1',
