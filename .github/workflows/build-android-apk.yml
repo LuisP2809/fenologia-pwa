@@ -96,6 +96,16 @@ jobs:
           grep -Fq "button.textContent='Descargar acceso'" app-user-access-package.js
           grep -Fq "permissions.add('map')" app-user-access-package.js
 
+      - name: Validar acceso para otros administradores
+        run: |
+          grep -Fq "userId===state.session?.id" app-user-access-package.js
+          grep -Fq "if(user.role==='Administrador')" app-user-access-package.js
+          grep -Fq "permissions.add(permission)" app-user-access-package.js
+          if grep -Fq "userId.startsWith('ADM-')" app-user-access-package.js; then
+            echo 'No debe bloquearse el acceso a otros administradores.'
+            exit 1
+          fi
+
       - name: Validar estabilidad de Seguridad de limpieza
         run: |
           grep -Fq "button.textContent!=='Descargar acceso'" app-user-access-package.js
@@ -133,13 +143,13 @@ jobs:
       - name: Preparar archivo descargable
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.11-debug.apk
-          sha256sum dist/Fenologia-0.13.11-debug.apk > dist/Fenologia-0.13.11-debug.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.12-debug.apk
+          sha256sum dist/Fenologia-0.13.12-debug.apk > dist/Fenologia-0.13.12-debug.sha256
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fenologia-APK-0.13.11
+          name: Fenologia-APK-0.13.12
           path: dist/*
           retention-days: 30
           if-no-files-found: error
