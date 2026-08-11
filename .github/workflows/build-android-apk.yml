@@ -62,6 +62,7 @@ jobs:
         run: |
           node --check app-core.js
           node --check app-map.js
+          node --check app-admin-dni-fix.js
           node --check app-stage-analytics.js
           node --check app-stage-analytics-ui.js
           node --check app-charts-refinement.js
@@ -70,6 +71,11 @@ jobs:
           node --check app-supervisor-file-analysis.js
           node --check app-analysis-source-guard.js
           node --check app-evaluator-navigation.js
+
+      - name: Validar DNI administrativo
+        run: |
+          grep -Fq "input.setAttribute('pattern','[0-9]{8}')" app-admin-dni-fix.js
+          grep -Fq "replace(/\\D/g,'')" app-admin-dni-fix.js
 
       - name: Validar protección contra bucle de Consolidar
         run: grep -q "description.textContent!==CONSOLIDATE_DESCRIPTION" app-xlsx-compat.js
@@ -102,13 +108,13 @@ jobs:
       - name: Preparar archivo descargable
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.5-debug.apk
-          sha256sum dist/Fenologia-0.13.5-debug.apk > dist/Fenologia-0.13.5-debug.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.6-debug.apk
+          sha256sum dist/Fenologia-0.13.6-debug.apk > dist/Fenologia-0.13.6-debug.sha256
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fenologia-APK-0.13.5
+          name: Fenologia-APK-0.13.6
           path: dist/*
           retention-days: 30
           if-no-files-found: error
