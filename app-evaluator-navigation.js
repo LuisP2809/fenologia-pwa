@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.13.3';
+  const VERSION='0.13.4';
   const evaluatorRole=()=>state?.session?.role==='Evaluador';
 
   function normalizeSidebar(html){
@@ -29,6 +29,20 @@
     document.querySelectorAll('.sidebar [data-view="charts"],.sidebar [data-view="consolidate"]').forEach(button=>button.remove());
   }
 
+  function openEvaluatorMap(){
+    state.view='map';
+    try{
+      if(typeof mapView==='function'){
+        mapView();
+        cleanRenderedNavigation();
+        return;
+      }
+    }catch(error){
+      console.error('No se pudo abrir el mapa del Evaluador directamente:',error);
+    }
+    render();
+  }
+
   const previousSidebar=sidebar;
   sidebar=function evaluatorNavigationSidebar(){
     return normalizeSidebar(previousSidebar());
@@ -44,14 +58,23 @@
 
   document.addEventListener('click',event=>{
     if(!evaluatorRole()) return;
-    const charts=event.target.closest('[data-view="charts"]');
-    if(!charts) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    state.view='map';
-    render();
+    const target=event.target.closest('[data-view]');
+    if(!target) return;
+
+    if(target.dataset.view==='map'){
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openEvaluatorMap();
+      return;
+    }
+
+    if(target.dataset.view==='charts'){
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openEvaluatorMap();
+    }
   },true);
 
-  window.FenologiaEvaluatorNavigation={version:VERSION};
+  window.FenologiaEvaluatorNavigation={version:VERSION,openMap:openEvaluatorMap};
   if(typeof state!=='undefined'&&state.catalog&&state.session) render();
 })();
