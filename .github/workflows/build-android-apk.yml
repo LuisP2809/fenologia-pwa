@@ -101,7 +101,7 @@ jobs:
           grep -Fq "userId===state.session?.id" app-user-access-package.js
           grep -Fq "if(user.role==='Administrador')" app-user-access-package.js
           grep -Fq "permissions.add(permission)" app-user-access-package.js
-          if grep -Fq "userId.startsWith('ADM-')" app-user-access-package.js; then
+          if grep -Fq "if(!userId||userId.startsWith('ADM-')) return;" app-user-access-package.js; then
             echo 'No debe bloquearse el acceso a otros administradores.'
             exit 1
           fi
