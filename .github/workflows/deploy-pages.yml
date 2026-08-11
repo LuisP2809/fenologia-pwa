@@ -3,6 +3,7 @@ name: Publicar Fenología en GitHub Pages
 on:
   push:
     branches:
+      - main
       - agent/version-inicial-pwa
   workflow_dispatch:
 
