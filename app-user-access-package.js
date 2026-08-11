@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.13.10';
+  const VERSION='0.13.12';
   const CLEANUP_ADMIN_KEY='fenologia-cleanup-admin-profiles-v1';
   const CONFIG_KEY='admin-config-v1';
   const CACHE_KEY='fenologia-admin-config-cache-v1';
@@ -40,6 +40,9 @@
       permissions.delete('charts');
       permissions.delete('consolidate');
       permissions.delete('admin');
+    }
+    if(user.role==='Administrador'){
+      ['evaluate','records','export','consolidate','map','charts','admin'].forEach(permission=>permissions.add(permission));
     }
     return [...permissions];
   }
@@ -93,7 +96,6 @@
       if(!config||!Array.isArray(config.users)) return;
       let changed=false;
       config.users.forEach(user=>{
-        if(user.role!=='Evaluador') return;
         const next=normalizedPermissions(user);
         if(JSON.stringify(next)!==JSON.stringify(user.permissions||[])){
           user.permissions=next;
@@ -107,7 +109,7 @@
       localStorage.setItem(CACHE_KEY,JSON.stringify(config));
       localStorage.setItem('fenologia-admin-config-v1',JSON.stringify(config));
       if(window.FenologiaDB?.isReady?.()&&!window.FenologiaDB?.isFallback?.()) await window.FenologiaDB.setSetting(CONFIG_KEY,config);
-    }catch(error){console.warn('No se pudieron alinear los permisos del Evaluador:',error);}
+    }catch(error){console.warn('No se pudieron alinear los permisos de los usuarios:',error);}
   }
 
   function decorateLogin(){
@@ -146,7 +148,7 @@
       const text=card.querySelector('.admin-user-main small')?.textContent||'';
       const match=text.match(/\b(?:EVA|SUP|ADM)-\d+\b/);
       const userId=match?.[0];
-      if(!userId||userId.startsWith('ADM-')) return;
+      if(!userId||userId===state.session?.id) return;
       const actions=card.querySelector('.admin-row-actions');
       if(!actions) return;
       const button=document.createElement('button');
@@ -154,6 +156,7 @@
       button.className='secondary';
       button.dataset.downloadUserAccess=userId;
       button.textContent='Descargar acceso';
+      button.title=userId.startsWith('ADM-')?'Generar acceso administrativo para otro dispositivo.':'Generar archivo de acceso para este usuario.';
       actions.prepend(button);
     });
   }
