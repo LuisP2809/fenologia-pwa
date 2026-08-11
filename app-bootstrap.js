@@ -30,6 +30,7 @@
     'app-xlsx-workflow.js',
     'app-xlsx-compat.js',
     'app-supervisor-file-analysis.js',
+    'app-analysis-source-guard.js',
     'app-release.js'
   ];
 
