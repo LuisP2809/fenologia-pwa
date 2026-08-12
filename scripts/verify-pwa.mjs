@@ -19,9 +19,14 @@ for (const icon of manifest.icons) {
 
 if (!index.includes('rel="manifest"')) throw new Error('index.html no enlaza el manifiesto.');
 if (!index.includes('css-platform.css')) throw new Error('index.html no carga los estilos de plataforma.');
-if (!worker.includes("type:'SKIP_WAITING'") && !worker.includes('type === \'SKIP_WAITING\'')) {
+
+// La implementación puede usar optional chaining u otras variantes de sintaxis.
+// Lo importante es que escuche la señal SKIP_WAITING y ejecute skipWaiting().
+const supportsControlledUpdate = worker.includes('SKIP_WAITING') && /\bskipWaiting\s*\(/.test(worker);
+if (!supportsControlledUpdate) {
   throw new Error('El service worker no admite actualización controlada.');
 }
+
 if (!worker.includes('app-platform.js')) throw new Error('El service worker no conserva el módulo de plataforma.');
 
 console.log('PWA validada correctamente.');
