@@ -40,7 +40,7 @@ jobs:
         run: npm run build:web
 
       - name: Configurar GitHub Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Subir sitio de GitHub Pages
         uses: actions/upload-pages-artifact@v4
