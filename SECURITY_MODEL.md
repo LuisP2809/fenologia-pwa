@@ -17,3 +17,5 @@ Fenología 0.14.0 es una aplicación *offline-first*. Protege los datos frente a
 Los roles, la revocación inmediata, la auditoría central y la sincronización entre dispositivos no pueden imponerse de manera absoluta solo con JavaScript local. Una persona con control completo del dispositivo puede alterar su almacenamiento o el código instalado. Para un entorno de alta confianza se requiere una API autenticada, claves administradas fuera del dispositivo, autorización en servidor, registro de auditoría remoto y administración empresarial del APK.
 
 La primera firma aceptada usa confianza inicial (TOFU). Su huella debe compararse por un canal administrativo independiente antes de distribuir paquetes a producción.
+
+La auditoría bloquea vulnerabilidades altas o críticas en dependencias que se distribuyen. `@capacitor/assets` 3.0.5 —la versión más reciente publicada— mantiene avisos en herramientas de generación de imágenes que no forman parte de la PWA ni del APK resultante. CI los informa por separado y no ejecuta ese generador con código de pull requests; deben revisarse cuando el proveedor publique una actualización.

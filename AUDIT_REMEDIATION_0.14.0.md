@@ -38,6 +38,7 @@
 - GitHub Pages solo publica desde `main`, `release/**` o ejecución manual.
 - Pruebas de sintaxis, integridad, criptografía, PWA y GeoJSON son obligatorias en CI.
 - Se añadieron auditoría programada de dependencias y Dependabot.
+- La auditoría de producción es bloqueante; los avisos sin corrección de `@capacitor/assets` se muestran como riesgo de herramienta y el generador no corre en pull requests.
 - Se retiraron `app.js` y `styles.css`, fuentes heredadas que no participaban en la aplicación publicada.
 
 ## Riesgo residual conocido

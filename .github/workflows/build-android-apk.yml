@@ -75,6 +75,7 @@ jobs:
         run: npx cap add android
 
       - name: Generar iconos y pantalla inicial
+        if: github.event_name != 'pull_request'
         run: >-
           npx @capacitor/assets generate --android --assetPath assets
           --iconBackgroundColor '#07552F'
