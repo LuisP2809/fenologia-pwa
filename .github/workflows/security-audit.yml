@@ -1,0 +1,38 @@
+name: Auditar dependencias
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+  push:
+    branches:
+      - main
+      - 'release/**'
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+  schedule:
+    - cron: '23 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Bloquear vulnerabilidades de producción
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Informar vulnerabilidades de herramientas de construcción
+        continue-on-error: true
+        run: npm audit --include=dev --audit-level=high

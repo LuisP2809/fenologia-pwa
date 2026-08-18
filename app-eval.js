@@ -25,7 +25,7 @@ function evaluateView(){
           <label>Módulo<select name="module" disabled required>${options([])}</select></label>
           <label>Turno - Lote<select name="lot" disabled required>${options([])}</select></label>
           <label>Variedad<select name="variety" disabled required>${options([])}</select></label>
-          <label>Cuadrante<select name="quadrant" required>${options(state.catalog.cuadrantes)}</select></label>
+          <label>Cuadrante (opcional)<select name="quadrant">${options(state.catalog.cuadrantes,'Sin cuadrante')}</select></label>
         </div>
       </section>
       <section class="panel form-panel"><div class="section-title"><span>2</span><div><h2>Variables de evaluación</h2><p>Ingresa únicamente números enteros. El valor cero significa “evaluado sin presencia”.</p></div></div>
@@ -43,7 +43,7 @@ function evaluateView(){
   bindEvaluationSelectors(editing);
 }
 function accordion(title,text,body,open=''){ return `<details ${open}><summary><div><b>${title}</b><small>${text}</small></div><span>⌄</span></summary><div class="accordion-body numeric-grid">${body}</div></details>`; }
-function numberField(label,name,value=''){ const shown=value===0?'0':(value??''); return `<label>${label}<input type="number" name="${name}" min="0" step="1" inputmode="numeric" placeholder="0" value="${esc(shown)}"></label>`; }
+function numberField(label,name,value=''){ const shown=value===0?'0':(value??''); return `<label>${label}<input type="number" name="${name}" min="0" max="999999" step="1" inputmode="numeric" placeholder="0" value="${esc(shown)}"></label>`; }
 function biometryGrid(record){ return Array.from({length:35},(_,i)=>`<fieldset><legend>Fruto ${i+1}</legend>${numberField('D.L',`f${i+1}_dl`,record?.[`f${i+1}_dl`])}${numberField('D.EA',`f${i+1}_dea`,record?.[`f${i+1}_dea`])}${numberField('D.EB',`f${i+1}_deb`,record?.[`f${i+1}_deb`])}</fieldset>`).join(''); }
 function fillSelect(select,list,value=''){ select.innerHTML=options(list); select.disabled=!list.length; if(value) select.value=value; }
 function bindEvaluationSelectors(editing){
@@ -64,30 +64,36 @@ function bindEvaluationSelectors(editing){
 }
 function updatePlant(f){
   if(state.editingId){ $('#plant-preview').textContent=state.records.find(r=>r.id===state.editingId)?.plant||1; return; }
-  const n=1+state.records.filter(r=>r.date===f.date.value&&r.evaluatorId===state.session.id&&r.lot===f.lot.value&&r.variety===f.variety.value&&r.quadrant===f.quadrant.value).length;
+  const used=state.records.filter(r=>r.date===f.date.value&&r.evaluatorId===state.session.id&&r.lot===f.lot.value&&r.variety===f.variety.value&&r.quadrant===(f.quadrant.value||'')).map(r=>Number(r.plant)||0);
+  const n=Math.max(0,...used)+1;
   $('#plant-preview').textContent=n;
 }
 function normalizeIntegerFields(data){
   Object.keys(data).forEach(key=>{
-    if(['date','campaign','field','farm','module','lot','variety','quadrant'].includes(key)) return;
-    data[key]=data[key]===''?'':Math.max(0,Math.trunc(Number(data[key])));
+    if(['date','campaign','field','farm','module','lot','variety','quadrant'].includes(key)||key.startsWith('dyn__')) return;
+    const number=Number(data[key]);
+    data[key]=data[key]===''||!Number.isFinite(number)?'':Math.max(0,Math.min(Number.MAX_SAFE_INTEGER,Math.trunc(number)));
   });
   return data;
 }
-function saveEvaluation(form){
+async function saveEvaluation(form){
   const data=normalizeIntegerFields(Object.fromEntries(new FormData(form)));
   if(state.editingId){
     const index=state.records.findIndex(r=>r.id===state.editingId);
-    if(index<0) return showToast('No se encontró el registro.');
+    if(index<0){showToast('No se encontró el registro.');return false;}
     const previous=state.records[index];
-    state.records[index]={...previous,...data,updatedAt:new Date().toISOString()};
-    state.selectedRecordId=previous.id;
-    state.editingId=null;
-    save(); showToast('Evaluación actualizada.'); state.view='record-detail'; render(); return;
+    const duplicate=state.records.some(record=>record.id!==previous.id&&record.date===data.date&&record.evaluatorId===previous.evaluatorId&&record.lot===data.lot&&record.variety===data.variety&&record.quadrant===(data.quadrant||'')&&Number(record.plant)===Number(previous.plant));
+    if(duplicate){showToast('Ya existe una evaluación con la misma ubicación y número de planta.');return false;}
+    state.records[index]={...previous,...data,quadrant:data.quadrant||'',updatedAt:new Date().toISOString()};
+    try{await save();}
+    catch(error){state.records[index]=previous;throw error;}
+    state.selectedRecordId=previous.id;state.editingId=null;
+    showToast('Evaluación actualizada.'); state.view='record-detail'; render(); return true;
   }
-  const plant=1+state.records.filter(r=>r.date===data.date&&r.evaluatorId===state.session.id&&r.lot===data.lot&&r.variety===data.variety&&r.quadrant===data.quadrant).length;
+  const used=state.records.filter(r=>r.date===data.date&&r.evaluatorId===state.session.id&&r.lot===data.lot&&r.variety===data.variety&&r.quadrant===(data.quadrant||'')).map(r=>Number(r.plant)||0);
+  const plant=Math.max(0,...used)+1;
   const record={...data,id:`EV-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`,plant,evaluatorId:state.session.id,evaluator:state.session.name,createdAt:new Date().toISOString()};
-  state.records.push(record); state.selectedRecordId=record.id; save(); showToast(`Evaluación guardada · Planta ${plant}`); state.view='record-detail'; render();
+  state.records.push(record); state.selectedRecordId=record.id; await save(); showToast(`Evaluación guardada · Planta ${plant}`); state.view='record-detail'; render();return true;
 }
 
 function recordsView(){
@@ -96,7 +102,7 @@ function recordsView(){
 }
 function recordTable(list){
   if(!list.length) return `<div class="empty"><span>${icons.detail}</span><b>Sin registros</b><p>No hay evaluaciones que coincidan con los filtros.</p></div>`;
-  return `<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Ubicación</th><th>Variedad</th><th>Cuadrante</th><th>Planta</th><th>Evaluador</th><th></th></tr></thead><tbody>${list.slice().reverse().map(r=>`<tr data-record="${r.id}" class="clickable-row"><td>${esc(r.date)}</td><td><b>${esc(r.lot)}</b><small>${esc(r.field)} · ${esc(r.farm)}</small></td><td>${esc(r.variety)}</td><td><span class="tag">${esc(r.quadrant)}</span></td><td>${esc(r.plant)}</td><td>${esc(r.evaluator)}</td><td>→</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Ubicación</th><th>Variedad</th><th>Cuadrante</th><th>Planta</th><th>Evaluador</th><th></th></tr></thead><tbody>${list.slice().reverse().map(r=>`<tr data-record="${r.id}" class="clickable-row"><td>${esc(r.date)}</td><td><b>${esc(r.lot)}</b><small>${esc(r.field)} · ${esc(r.farm)}</small></td><td>${esc(r.variety)}</td><td><span class="tag">${esc(r.quadrant||'—')}</span></td><td>${esc(r.plant)}</td><td>${esc(r.evaluator)}</td><td>→</td></tr>`).join('')}</tbody></table></div>`;
 }
 function recordDetailView(){
   const r=state.records.find(x=>x.id===state.selectedRecordId);
@@ -138,7 +144,24 @@ function exportView(){
     <section class="panel danger-zone"><div><span>ZONA PROTEGIDA</span><h2>Limpiar datos locales</h2><p>La limpieza solo se habilita cuando el último respaldo es posterior al registro más reciente.</p></div><button class="danger" id="clear-records">Limpiar datos</button></section>`);
 }
 function exportCard(id,icon,title,text,tag,tone){ return `<button class="export-card ${tone}" id="${id}"><span>${icon}</span><div><b>${title}</b><p>${text}</p><em>${tag}</em></div><i>→</i></button>`; }
-function downloadFile(name,content,type){ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500); }
+async function downloadFile(name,content,type){
+  const blob=new Blob([content],{type});
+  if(window.showSaveFilePicker){
+    try{
+      const extension='.'+String(name).split('.').pop();
+      const mime=String(type||'application/octet-stream').split(';')[0];
+      const handle=await window.showSaveFilePicker({suggestedName:name,types:[{description:'Archivo de Fenología',accept:{[mime]:[extension]}}]});
+      const writable=await handle.createWritable();await writable.write(blob);await writable.close();
+      return {ok:true,persisted:true,name};
+    }catch(error){
+      if(error?.name!=='AbortError') throw error;
+      return {ok:false,persisted:false,cancelled:true,name};
+    }
+  }
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+  return {ok:true,persisted:false,downloadStarted:true,name};
+}
 function isoWeek(dateText){ const d=new Date(`${dateText}T12:00:00`); const target=new Date(d.valueOf()); const day=(d.getDay()+6)%7; target.setDate(target.getDate()-day+3); const firstThursday=new Date(target.getFullYear(),0,4); const firstDay=(firstThursday.getDay()+6)%7; firstThursday.setDate(firstThursday.getDate()-firstDay+3); return 1+Math.round((target-firstThursday)/604800000); }
 function dateParts(r){ const d=new Date(`${r.date}T12:00:00`); return [r.id,r.date,isoWeek(r.date),d.getMonth()+1,d.getFullYear(),r.field,r.farm,r.module,r.lot,r.quadrant,r.variety,r.plant]; }
 function fenologyRow(r){ return [...dateParts(r),...stages.map(s=>r[s]??''),r.yemasVegetativas??'',r.yemasFlorales??'',r.yemasDudosas??'',r.senescencia??'',r.broteRojo??'',r.brotePalido??'',r.broteOscuro??'',r.paniculaIndeterminada??'',r.paniculaDeterminada??'',r.conteoPaniculas??'',r.conteoCuajas??'',r.paniculasSinCuajar??'',r.paniculaBuena??'',r.paniculaMedia??'',r.paniculaMala??'']; }
@@ -153,17 +176,21 @@ function exportExact(type){
   downloadFile(`${type==='fenologia'?'FENOLOGIA':'BIOMETRIA'}_${stamp}.csv`,csv,'text/csv;charset=utf-8');
   showToast(`${headers.length} columnas exportadas correctamente.`);
 }
-function createBackup(){
+async function createBackup(){
   const payload={version:1,createdAt:new Date().toISOString(),records:state.records,assignments:state.assignments};
-  downloadFile(`RESPALDO_FENOLOGIA_${today().replaceAll('-','')}.json`,JSON.stringify(payload,null,2),'application/json');
+  const result=await downloadFile(`RESPALDO_FENOLOGIA_${today().replaceAll('-','')}.json`,JSON.stringify(payload,null,2),'application/json');
+  if(!result?.ok) return showToast('El respaldo fue cancelado; la protección no se activó.');
   localStorage.setItem('fenologia-last-backup',payload.createdAt);
   showToast('Respaldo creado y protección activada.');
   exportView();
 }
 async function importBackup(file){
+  const previousRecords=state.records,previousAssignments=state.assignments;
   try{
+    if(file.size>25*1024*1024) throw new Error('El respaldo supera el límite de 25 MB.');
     const payload=JSON.parse(await file.text());
     if(!payload||!Array.isArray(payload.records)||typeof payload.assignments!=='object') throw new Error('El archivo no tiene la estructura de respaldo válida.');
+    if(payload.records.length>100000) throw new Error('El respaldo supera el límite de 100 000 registros.');
     const existing=new Map(state.records.map(r=>[r.id,r])); let added=0,updated=0,unchanged=0;
     payload.records.forEach(incoming=>{
       if(!incoming?.id) return;
@@ -175,14 +202,16 @@ async function importBackup(file){
     });
     state.records=[...existing.values()];
     state.assignments={...state.assignments,...payload.assignments};
-    save(); showToast(`Importación: ${added} nuevos, ${updated} actualizados, ${unchanged} existentes.`); exportView();
-  }catch(error){showToast(error.message||'No se pudo importar el respaldo.');}
+    await save(); showToast(`Importación: ${added} nuevos, ${updated} actualizados, ${unchanged} existentes.`); exportView();
+  }catch(error){state.records=previousRecords;state.assignments=previousAssignments;showToast(error.message||'No se pudo importar el respaldo.');}
 }
 function canClearRecords(){
   if(!state.records.length) return {ok:false,message:'No hay registros para limpiar.'};
   const backup=localStorage.getItem('fenologia-last-backup');
   if(!backup) return {ok:false,message:'Primero debes crear un respaldo.'};
+  let manifest=null;try{manifest=JSON.parse(localStorage.getItem('fenologia-last-backup-manifest-v1')||'null');}catch{}
+  if(!manifest||manifest.createdAt!==backup) return {ok:false,message:'No se pudo verificar el respaldo. Crea uno nuevo.'};
   const newest=Math.max(...state.records.map(r=>new Date(r.updatedAt||r.createdAt||0).getTime()));
-  if(new Date(backup).getTime()<newest) return {ok:false,message:'Hay cambios posteriores al último respaldo. Crea uno nuevo.'};
+  if(Number(manifest.recordCount)!==state.records.length||Number(manifest.newestAt)!==newest||new Date(backup).getTime()<newest) return {ok:false,message:'Hay cambios posteriores al último respaldo. Crea uno nuevo.'};
   return {ok:true};
 }

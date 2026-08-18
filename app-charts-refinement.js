@@ -50,7 +50,8 @@
 
   function filteredRecords({ignoreDates=false}={}){
     const filters=domFilters();
-    return state.records.filter(record=>{
+    const source=window.FenologiaFileAnalysis?.getChartRecords?.() ?? state.records;
+    return source.filter(record=>{
       if(!ignoreDates&&filters.from&&(!record.date||record.date<filters.from)) return false;
       if(!ignoreDates&&filters.to&&(!record.date||record.date>filters.to)) return false;
       if(filters.campaign&&campaignOf(record)!==filters.campaign) return false;

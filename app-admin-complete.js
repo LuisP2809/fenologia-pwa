@@ -9,6 +9,7 @@
   const CLEANUP_DEVICE_KEY = 'fenologia-cleanup-device-profile-v1';
   const CLEANUP_HISTORY_KEY = 'fenologia-cleanup-history-v1';
   const DEFAULT_PINS = {'ADM-01':'12345678','SUP-01':'11223344','EVA-01':'87654321'};
+  const LOGIN_ATTEMPTS_KEY='fenologia-login-attempts-v1';
   const PERMISSIONS = [
     ['evaluate','Registrar evaluaciones'],
     ['records','Consultar registros'],
@@ -55,10 +56,17 @@
   const unique = values => [...new Set(values.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'es'));
   const activeUsers = () => (adminConfig?.users || []).filter(user=>user.active);
   const rolePermissions = role => [...(ROLE_DEFAULTS[role] || [])];
+  function loginAttemptState(){return readJson(LOGIN_ATTEMPTS_KEY,{count:0,lockedUntil:null});}
+  function loginBlocked(){const value=loginAttemptState();return value.lockedUntil&&Date.now()<new Date(value.lockedUntil).getTime()?value:null;}
+  function failedLogin(){
+    const previous=loginAttemptState();const count=Number(previous.count||0)+1;
+    writeJson(LOGIN_ATTEMPTS_KEY,{count,lockedUntil:count>=5?new Date(Date.now()+10*60*1000).toISOString():null});
+    return count;
+  }
+  function clearLoginAttempts(){localStorage.removeItem(LOGIN_ATTEMPTS_KEY);}
 
   async function hashPin(pin){
-    const digest = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`FENOLOGIA|PIN|${String(pin)}`));
-    return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
+    return window.FenologiaCredentials.legacyHash(pin);
   }
 
   async function getSetting(key,fallback=null){
@@ -88,13 +96,15 @@
   async function buildDefaultConfig(){
     const catalog=clone(await waitCatalog());
     const configuredUsers=[];
-    for(const user of users){
+    const development=['localhost','127.0.0.1'].includes(location.hostname)||location.hostname.endsWith('.app.github.dev');
+    for(const user of development?users:[]){
+      const credential=await window.FenologiaCredentials.create(DEFAULT_PINS[user.id] || user.pin || '00000000');
       configuredUsers.push({
         id:user.id,
         name:user.name,
         role:user.role,
         active:true,
-        pinHash:await hashPin(DEFAULT_PINS[user.id] || user.pin || '00000000'),
+        ...credential,
         permissions:rolePermissions(user.role),
         createdAt:now(),
         updatedAt:now()
@@ -126,6 +136,9 @@
       role:['Evaluador','Supervisor','Administrador'].includes(user.role)?user.role:'Evaluador',
       active:user.active!==false,
       pinHash:safe(user.pinHash),
+      pinSalt:safe(user.pinSalt),
+      pinAlgorithm:safe(user.pinAlgorithm),
+      pinIterations:Number(user.pinIterations||0)||null,
       permissions:Array.isArray(user.permissions)?unique(user.permissions):rolePermissions(user.role),
       createdAt:user.createdAt || now(),
       updatedAt:user.updatedAt || now()
@@ -148,12 +161,13 @@
     state.catalog=clone(adminConfig.catalog);
     state.assignments=clone(adminConfig.assignments || {});
     const sessionUser=state.session && adminConfig.users.find(user=>user.id===state.session.id);
-    if(state.session && (!sessionUser || !sessionUser.active)){
+    const expired=state.session&&(!state.session.expiresAt||Date.now()>new Date(state.session.expiresAt).getTime()||!state.session.lastActiveAt||Date.now()-new Date(state.session.lastActiveAt).getTime()>30*60*1000);
+    if(state.session && (!sessionUser || !sessionUser.active || expired)){
       localStorage.removeItem('fenologia-session');
       state.session=null;
       state.view='home';
     }else if(sessionUser){
-      state.session={id:sessionUser.id,name:sessionUser.name,role:sessionUser.role,permissions:[...sessionUser.permissions]};
+      state.session={id:sessionUser.id,name:sessionUser.name,role:sessionUser.role,permissions:[...sessionUser.permissions],issuedAt:state.session.issuedAt,lastActiveAt:state.session.lastActiveAt,expiresAt:state.session.expiresAt};
       localStorage.setItem('fenologia-session',JSON.stringify(state.session));
     }
   }
@@ -397,17 +411,45 @@
 
   function normalizeGeoJSON(payload,fileName='mapa.geojson'){
     if(!payload || payload.type!=='FeatureCollection' || !Array.isArray(payload.features)) throw new Error('El archivo no es una FeatureCollection GeoJSON válida.');
+    if(!payload.features.length) throw new Error('El GeoJSON no contiene geometrías.');
+    if(payload.features.length>100000) throw new Error('El GeoJSON supera el límite de 100 000 geometrías.');
     const lookup=new Map(flattenLots().map(row=>[upper(row.lot),row]));
     const grouped=new Map();
     let omitted=0;
-    payload.features.forEach(feature=>{
+    let coordinateCount=0;
+    const samePosition=(first,last)=>first.length>=2&&last.length>=2&&first[0]===last[0]&&first[1]===last[1];
+    const validateRing=(ring,label)=>{
+      if(!Array.isArray(ring)||ring.length<4) throw new Error(`${label} debe tener al menos 4 coordenadas.`);
+      ring.forEach((position,index)=>{
+        coordinateCount++;
+        if(coordinateCount>1000000) throw new Error('El GeoJSON supera el límite de 1 000 000 de coordenadas.');
+        if(!Array.isArray(position)||position.length<2||!Number.isFinite(position[0])||!Number.isFinite(position[1])) throw new Error(`${label} contiene una coordenada inválida en la posición ${index+1}.`);
+        if(position[0]<-180||position[0]>180||position[1]<-90||position[1]>90) throw new Error(`${label} contiene coordenadas fuera del rango geográfico permitido.`);
+      });
+      if(!samePosition(ring[0],ring.at(-1))) throw new Error(`${label} no está cerrado: la primera y última coordenada deben coincidir.`);
+      const area=Math.abs(ring.slice(0,-1).reduce((sum,point,index)=>{
+        const next=ring[(index+1)%(ring.length-1)];
+        return sum+(point[0]*next[1]-next[0]*point[1]);
+      },0)/2);
+      if(area<1e-14) throw new Error(`${label} no forma un área válida.`);
+    };
+    const validatePolygon=(polygon,label)=>{
+      if(!Array.isArray(polygon)||!polygon.length) throw new Error(`${label} no contiene anillos.`);
+      polygon.forEach((ring,index)=>validateRing(ring,`${label}, anillo ${index+1}`));
+      return polygon;
+    };
+    payload.features.forEach((feature,featureIndex)=>{
       const lot=safe(feature?.properties?.LOTE ?? feature?.properties?.lote ?? feature?.properties?.Lot);
       if(!lot || !feature?.geometry){omitted++;return;}
       const key=upper(lot);
       if(!grouped.has(key)) grouped.set(key,{lot,polygons:[]});
       const target=grouped.get(key);
-      if(feature.geometry.type==='Polygon') target.polygons.push(feature.geometry.coordinates);
-      else if(feature.geometry.type==='MultiPolygon') target.polygons.push(...feature.geometry.coordinates);
+      const label=`Geometría ${featureIndex+1} (${lot})`;
+      if(feature.geometry.type==='Polygon') target.polygons.push(validatePolygon(feature.geometry.coordinates,label));
+      else if(feature.geometry.type==='MultiPolygon'){
+        if(!Array.isArray(feature.geometry.coordinates)||!feature.geometry.coordinates.length) throw new Error(`${label} no contiene polígonos.`);
+        feature.geometry.coordinates.forEach((polygon,index)=>target.polygons.push(validatePolygon(polygon,`${label}, polígono ${index+1}`)));
+      }else throw new Error(`${label} usa el tipo ${feature.geometry.type||'desconocido'}; solo se admiten Polygon y MultiPolygon.`);
     });
     const features=[];
     const extras=[];
@@ -445,7 +487,7 @@
     const profiles=readJson(CLEANUP_ADMIN_KEY,{});
     const profile=profiles[user.id];
     if(!profile) return null;
-    return {type:'fenologia-cleanup-profile',version:1,evaluatorId:profile.evaluatorId,evaluatorName:profile.evaluatorName,secret:profile.secret,issuedAt:profile.createdAt,issuedBy:profile.createdBy,revision:profile.revision};
+    return {type:'fenologia-cleanup-profile',version:1,evaluatorId:profile.evaluatorId,evaluatorName:profile.evaluatorName,secret:profile.secret,issuedAt:profile.createdAt,issuedBy:profile.createdBy,revision:profile.revision,validUntil:new Date(new Date(profile.createdAt).getTime()+90*86400000).toISOString(),embeddedInSignedPackage:true};
   }
 
   function packageViewRows(){
@@ -474,12 +516,6 @@
       <section class="panel"><div class="panel-head"><div><span>ACTIVIDAD</span><h2>Historial de limpiezas y configuraciones</h2></div></div><div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Acción</th><th>Responsable</th><th>Fecha</th></tr></thead><tbody>${packageViewRows() || '<tr><td colspan="4">Aún no hay actividad registrada.</td></tr>'}</tbody></table></div></section>`);
   }
 
-  async function packageChecksum(core){
-    const text=JSON.stringify(core);
-    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
-    return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
-  }
-
   async function exportConfigPackage(){
     const target=activeUsers().find(user=>user.id===ui.packageTarget);
     if(!target) return showToast('Selecciona un usuario destinatario.');
@@ -489,11 +525,14 @@
       id:user.id,name:user.name,role:user.role,active:true,
       permissions:user.permissions,
       pinHash:user.id===target.id?user.pinHash:null,
+      pinSalt:user.id===target.id?user.pinSalt:null,
+      pinAlgorithm:user.id===target.id?user.pinAlgorithm:null,
+      pinIterations:user.id===target.id?user.pinIterations:null,
       loginAllowed:user.id===target.id
     }));
     const core={
       type:'fenologia-config-package',
-      version:1,
+      version:2,
       packageId:`PKG-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`,
       issuedAt:now(),
       issuedBy:state.session.name,
@@ -504,10 +543,12 @@
       assignments:clone(state.assignments),
       campaigns:clone(adminConfig.campaigns),
       map:clone(adminMap),
-      cleanupProfile
+      cleanupProfile,
+      dynamicParameters:window.FenologiaDynamicParameters?.parameters?.()||[]
     };
-    const payload={...core,checksum:await packageChecksum(core)};
-    downloadFile(`CONFIG_FENOLOGIA_${target.id}_${today().replaceAll('-','')}.json`,JSON.stringify(payload,null,2),'application/json');
+    const payload=await window.FenologiaPackageSecurity.sign(core);
+    const result=await downloadFile(`CONFIG_FENOLOGIA_${target.id}_${today().replaceAll('-','')}.json`,JSON.stringify(payload,null,2),'application/json');
+    if(!result?.ok)return showToast('La descarga del paquete fue cancelada.');
     await recordHistory('Paquete descargado',{destinatario:target.name,rol:target.role,packageId:core.packageId});
     showToast('Paquete de configuración descargado.');
     adminPackageView();
@@ -515,33 +556,40 @@
 
   async function importConfigPackage(file){
     const payload=JSON.parse(await file.text());
-    if(payload?.type!=='fenologia-config-package'||payload?.version!==1||!payload.target||!payload.catalog) throw new Error('El archivo no es un paquete de configuración válido.');
-    const {checksum,...core}=payload;
-    if(checksum && await packageChecksum(core)!==checksum) throw new Error('La firma del paquete no coincide; el archivo pudo modificarse.');
-    const target=payload.users?.find(user=>user.id===payload.target.id);
+    if(payload?.type!=='fenologia-config-package'||payload?.version!==2||!payload.target||!payload.catalog) throw new Error('El archivo no es un paquete de configuración firmado compatible.');
+    const verified=await window.FenologiaPackageSecurity.verify(payload);
+    if(verified.pendingTrust){
+      const shown=verified.fingerprint.match(/.{1,4}/g).join('-');
+      if(!confirm(`Primera vinculación administrativa. Compara esta huella por un canal confiable:\n\n${shown}\n\n¿Confirmas que pertenece al Administrador?`))throw new Error('La identidad firmante no fue autorizada.');
+      await window.FenologiaPackageSecurity.trust(payload.signature.publicKey);
+    }
+    const core=verified.core;
+    const target=core.users?.find(user=>user.id===core.target.id);
     if(!target?.pinHash) throw new Error('El paquete no contiene el acceso protegido del destinatario.');
-    const importedUsers=(payload.users || []).map(user=>({
+    const importedUsers=(core.users || []).map(user=>({
       id:user.id,name:user.name,role:user.role,active:user.active!==false,
       permissions:Array.isArray(user.permissions)?user.permissions:rolePermissions(user.role),
       pinHash:user.pinHash || '',
+      pinSalt:user.pinSalt || '',pinAlgorithm:user.pinAlgorithm || '',pinIterations:Number(user.pinIterations||0)||null,
       loginAllowed:user.loginAllowed===true,
       createdAt:now(),updatedAt:now()
     }));
     adminConfig=normalizeConfig({
-      type:'fenologia-admin-config',version:1,revision:payload.revision || 1,updatedAt:now(),
-      users:importedUsers,catalog:payload.catalog,assignments:payload.assignments || {},
-      campaigns:payload.campaigns || [defaultCampaign()],archivedLots:[]
+      type:'fenologia-admin-config',version:1,revision:core.revision || 1,updatedAt:now(),
+      users:importedUsers,catalog:core.catalog,assignments:core.assignments || {},
+      campaigns:core.campaigns || [defaultCampaign()],archivedLots:[]
     });
-    adminMap=payload.map || null;
+    adminMap=core.map || null;
     state.assignments=clone(adminConfig.assignments);
     await setSetting(CONFIG_KEY,adminConfig);
     await setSetting(MAP_KEY,adminMap);
     writeJson(CACHE_KEY,adminConfig);
-    writeJson(DEVICE_KEY,{targetId:payload.target.id,targetName:payload.target.name,role:payload.target.role,packageId:payload.packageId,revision:payload.revision,importedAt:now()});
-    if(payload.cleanupProfile) writeJson(CLEANUP_DEVICE_KEY,{...payload.cleanupProfile,enrolledAt:now()});
+    writeJson(DEVICE_KEY,{targetId:core.target.id,targetName:core.target.name,role:core.target.role,packageId:core.packageId,revision:core.revision,signerFingerprint:verified.fingerprint,importedAt:now()});
+    if(core.cleanupProfile) writeJson(CLEANUP_DEVICE_KEY,{...core.cleanupProfile,enrolledAt:now()});
+    if(Array.isArray(core.dynamicParameters))await window.FenologiaDynamicParameters?.replace?.(core.dynamicParameters,'Parámetros aplicados desde paquete firmado');
     syncRuntime();
-    save();
-    await recordHistory('Paquete aplicado',{packageId:payload.packageId,destinatario:payload.target.name},payload.target.name);
+    await save();
+    await recordHistory('Paquete aplicado',{packageId:core.packageId,destinatario:core.target.name,firma:verified.fingerprint},core.target.name);
     localStorage.removeItem('fenologia-session');
     state.session=null;
     state.view='home';
@@ -623,12 +671,20 @@
       const data=new FormData(event.target);
       const name=safe(data.get('name')).toLowerCase();
       const pin=safe(data.get('pin'));
+      const blocked=loginBlocked();
+      if(blocked){const minutes=Math.ceil((new Date(blocked.lockedUntil).getTime()-Date.now())/60000);return showToast(`Acceso bloqueado temporalmente. Intenta en ${minutes} minuto(s).`);}
       const user=(adminConfig.users || []).find(item=>item.name.toLowerCase()===name);
-      if(!user||!user.active) return showToast('Usuario inexistente o inactivo.');
+      if(!user||!user.active){failedLogin();return showToast('Nombre o acceso incorrecto.');}
       const binding=readJson(DEVICE_KEY,null);
       if(binding?.targetId&&binding.targetId!==user.id) return showToast(`Este dispositivo está configurado para ${binding.targetName}.`);
-      if(!user.pinHash || await hashPin(pin)!==user.pinHash) return showToast('Nombre o DNI incorrecto.');
-      state.session={id:user.id,name:user.name,role:user.role,permissions:[...user.permissions]};
+      if(!await window.FenologiaCredentials.verify(pin,user)){const count=failedLogin();return showToast(count>=5?'Acceso bloqueado durante 10 minutos.':'Nombre o acceso incorrecto.');}
+      clearLoginAttempts();
+      if(user.pinAlgorithm!=='PBKDF2-SHA256'){
+        Object.assign(user,await window.FenologiaCredentials.create(pin));
+        await setSetting(CONFIG_KEY,adminConfig);writeJson(CACHE_KEY,adminConfig);
+      }
+      const issuedAt=new Date();
+      state.session={id:user.id,name:user.name,role:user.role,permissions:[...user.permissions],issuedAt:issuedAt.toISOString(),lastActiveAt:issuedAt.toISOString(),expiresAt:new Date(issuedAt.getTime()+8*60*60*1000).toISOString()};
       localStorage.setItem('fenologia-session',JSON.stringify(state.session));
       state.view='home';render();return;
     }
@@ -643,7 +699,7 @@
       if(creating){user={id:nextUserId(role),name,role,active:true,pinHash:'',permissions:rolePermissions(role),createdAt:now(),updatedAt:now()};adminConfig.users.push(user);}
       user.name=name;user.role=role;user.active=data.get('active')==='on';user.permissions=data.getAll('permissions');
       if(!user.permissions.length) user.permissions=rolePermissions(role);
-      if(pin) user.pinHash=await hashPin(pin);
+      if(pin) Object.assign(user,await window.FenologiaCredentials.create(pin));
       if(!user.pinHash) return showToast('Define un DNI / PIN para el usuario.');
       user.updatedAt=now();
       await persistConfig(creating?'Usuario creado':'Usuario actualizado',{usuario:user.name,rol:user.role,estado:user.active?'activo':'inactivo'});
@@ -795,7 +851,9 @@
     if(event.target.id==='admin-map-file'&&event.target.files?.[0]){
       try{
         ui.mapBusy=true;showToast('Validando GeoJSON…');
-        const file=event.target.files[0],payload=JSON.parse(await file.text()),normalized=normalizeGeoJSON(payload,file.name);
+        const file=event.target.files[0];
+        if(file.size>20*1024*1024) throw new Error('El GeoJSON supera el límite de 20 MB.');
+        const payload=JSON.parse(await file.text()),normalized=normalizeGeoJSON(payload,file.name);
         if(normalized.stats.faltantesActivos.length) throw new Error(`El mapa no contiene ${normalized.stats.faltantesActivos.length} lote(s) activo(s): ${normalized.stats.faltantesActivos.slice(0,8).join(', ')}.`);
         adminMap=normalized;await setSetting(MAP_KEY,adminMap);await recordHistory('Mapa GeoJSON reemplazado',{archivo:file.name,lotes:normalized.stats.lotesActivos,polígonos:normalized.stats.poligonosOriginales});
         showToast('GeoJSON validado y guardado. Recarga para aplicarlo.');adminSettingsView();
@@ -804,7 +862,10 @@
       return;
     }
     if(['config-package-file','login-config-file'].includes(event.target.id)&&event.target.files?.[0]){
-      try{await importConfigPackage(event.target.files[0]);}
+      try{
+        if(event.target.files[0].size>2*1024*1024) throw new Error('El paquete supera el límite de 2 MB.');
+        await importConfigPackage(event.target.files[0]);
+      }
       catch(error){showToast(error.message || 'No se pudo aplicar el paquete.');}
       event.target.value='';return;
     }

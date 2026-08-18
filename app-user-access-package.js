@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.13.15';
+  const VERSION='0.14.0';
   const CLEANUP_ADMIN_KEY='fenologia-cleanup-admin-profiles-v1';
   const CONFIG_KEY='admin-config-v1';
   const CACHE_KEY='fenologia-admin-config-cache-v1';
@@ -8,11 +8,6 @@
   const safe=value=>String(value??'').trim();
   const readJson=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback));}catch{return fallback;}};
   const now=()=>new Date().toISOString();
-
-  async function checksum(core){
-    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(core)));
-    return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
-  }
 
   function cleanupProfileFor(target){
     if(target?.role!=='Evaluador') return null;
@@ -26,7 +21,9 @@
       secret:profile.secret,
       issuedAt:profile.createdAt,
       issuedBy:profile.createdBy,
-      revision:profile.revision
+      revision:profile.revision,
+      validUntil:new Date(new Date(profile.createdAt).getTime()+90*86400000).toISOString(),
+      embeddedInSignedPackage:true
     };
   }
 
@@ -63,12 +60,15 @@
       active:true,
       permissions:normalizedPermissions(user),
       pinHash:user.id===target.id?user.pinHash:null,
+      pinSalt:user.id===target.id?user.pinSalt:null,
+      pinAlgorithm:user.id===target.id?user.pinAlgorithm:null,
+      pinIterations:user.id===target.id?user.pinIterations:null,
       loginAllowed:user.id===target.id
     }));
     const cleanupProfile=cleanupProfileFor(target);
     const core={
       type:'fenologia-config-package',
-      version:1,
+      version:2,
       packageId:`PKG-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`,
       issuedAt:now(),
       issuedBy:state.session.name,
@@ -79,11 +79,13 @@
       assignments:clone(config.assignments||state.assignments||{}),
       campaigns:clone(config.campaigns||[]),
       map:clone(window.FenologiaAdmin?.map?.()||null),
-      cleanupProfile
+      cleanupProfile,
+      dynamicParameters:window.FenologiaDynamicParameters?.parameters?.()||[]
     };
-    const payload={...core,checksum:await checksum(core)};
+    const payload=await window.FenologiaPackageSecurity.sign(core);
     const stamp=(typeof today==='function'?today():new Date().toISOString().slice(0,10)).replaceAll('-','');
-    downloadFile(`ACCESO_FENOLOGIA_${target.id}_${stamp}.json`,JSON.stringify(payload,null,2),'application/json');
+    const result=await downloadFile(`ACCESO_FENOLOGIA_${target.id}_${stamp}.json`,JSON.stringify(payload,null,2),'application/json');
+    if(!result?.ok)return showToast('La descarga del acceso fue cancelada.');
     showToast(cleanupProfile
       ? `Acceso de ${target.name} descargado; incluye autorización de limpieza.`
       : `Acceso de ${target.name} descargado.`);

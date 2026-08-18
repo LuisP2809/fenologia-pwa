@@ -27,6 +27,7 @@
   const pct = value => value === null ? '—' : `${fmt(value,1)} %`;
   const clamp = value => Math.max(0,Math.min(100,Number(value)||0));
   const text = value => esc(value ?? '');
+  const sourceRecords = () => window.FenologiaFileAnalysis?.getChartRecords?.() ?? state.records;
 
   function campaignOf(record){
     if(!blank(record.campaign)) return String(record.campaign);
@@ -53,7 +54,7 @@
   }
 
   function filteredRecords(){
-    return state.records.filter(record => {
+    return sourceRecords().filter(record => {
       if(chartState.from && (!record.date || record.date < chartState.from)) return false;
       if(chartState.to && (!record.date || record.date > chartState.to)) return false;
       if(chartState.campaign && campaignOf(record) !== chartState.campaign) return false;
@@ -69,7 +70,7 @@
   }
 
   function filterOptions(){
-    const records = state.records;
+    const records = sourceRecords();
     const fields = unique(records.map(r=>r.field).concat(Object.keys(state.catalog?.lotesAgrupados||{})));
     const farms = unique(records.filter(r=>!chartState.field||r.field===chartState.field).map(r=>r.farm)
       .concat(Object.keys(state.catalog?.lotesAgrupados?.[chartState.field]||{})));

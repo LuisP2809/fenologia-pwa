@@ -24,7 +24,7 @@ function render(){
   (views[state.view]||homeView)();
 }
 
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
   const view=e.target.closest('[data-view]')?.dataset.view;
   if(view){
     if(view==='evaluate') state.editingId=null;
@@ -41,15 +41,24 @@ document.addEventListener('click',e=>{
   if(e.target.closest('#import-backup')){$('#backup-file')?.click();return;}
   if(e.target.closest('#clear-records')){
     const check=canClearRecords();if(!check.ok)return showToast(check.message);
-    if(confirm('Se eliminarán los registros locales respaldados. ¿Deseas continuar?')){state.records=[];state.selectedRecordId=null;save();render();showToast('Datos locales eliminados.');}
+    if(confirm('Se eliminarán los registros locales respaldados. ¿Deseas continuar?')){
+      const previousRecords=state.records,previousSelection=state.selectedRecordId;
+      try{state.records=[];state.selectedRecordId=null;await save();render();showToast('Datos locales eliminados.');}
+      catch(error){state.records=previousRecords;state.selectedRecordId=previousSelection;showToast('No se pudo completar la limpieza. Los datos se conservaron.');}
+    }
     return;
   }
-  if(e.target.closest('#save-assignment')){const f=$('#assignment-form');if(!f.lot.value)return showToast('Selecciona un lote.');state.assignments[f.lot.value]=$$('#variety-checks input:checked').map(x=>x.value);save();showToast('Variedades actualizadas.');}
+  if(e.target.closest('#save-assignment')){
+    const f=$('#assignment-form');if(!f.lot.value)return showToast('Selecciona un lote.');
+    const previous=state.assignments[f.lot.value];state.assignments[f.lot.value]=$$('#variety-checks input:checked').map(x=>x.value);
+    try{await save();showToast('Variedades actualizadas.');}
+    catch(error){if(previous===undefined)delete state.assignments[f.lot.value];else state.assignments[f.lot.value]=previous;showToast('No se pudo guardar la asignación.');}
+  }
 });
 document.addEventListener('submit',e=>{
   e.preventDefault();
-  if(e.target.id==='login-form'){const d=new FormData(e.target);const u=users.find(x=>x.name.toLowerCase()===String(d.get('name')).trim().toLowerCase()&&x.pin===d.get('pin'));if(!u)return showToast('Nombre o DNI incorrecto.');state.session=u;localStorage.setItem('fenologia-session',JSON.stringify(u));state.view='home';render();}
-  if(e.target.id==='evaluation-form') saveEvaluation(e.target);
+  if(e.target.id==='login-form'&&!window.FenologiaAdmin){const d=new FormData(e.target);const u=users.find(x=>x.name.toLowerCase()===String(d.get('name')).trim().toLowerCase()&&x.pin===d.get('pin'));if(!u)return showToast('Nombre o acceso incorrecto.');const issuedAt=new Date();state.session={...u,issuedAt:issuedAt.toISOString(),lastActiveAt:issuedAt.toISOString(),expiresAt:new Date(issuedAt.getTime()+8*60*60*1000).toISOString()};localStorage.setItem('fenologia-session',JSON.stringify(state.session));state.view='home';render();}
+  if(e.target.id==='evaluation-form') saveEvaluation(e.target).catch(error=>{console.error(error);showToast('No se pudo guardar la evaluación. Los datos permanecen en el formulario.');});
 });
 document.addEventListener('input',e=>{
   if(e.target.id==='record-search'||e.target.id==='record-date'){const q=($('#record-search')?.value||'').toLowerCase();const date=$('#record-date')?.value||'';const list=state.records.filter(r=>(!date||r.date===date)&&(!q||[r.lot,r.farm,r.variety,r.field].join(' ').toLowerCase().includes(q)));$('#records-container').innerHTML=recordTable(list);}

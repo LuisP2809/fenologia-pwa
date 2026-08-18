@@ -252,13 +252,14 @@
   evaluateView=function dynamicEvaluateView(){previousEvaluateView();appendDynamicFields();};
 
   const previousSaveEvaluation=saveEvaluation;
-  saveEvaluation=function dynamicSaveEvaluation(form){
+  saveEvaluation=async function dynamicSaveEvaluation(form){
     const active=activeParameters();
     const collected=collectDynamicValues(form);
     const controls=[...form.querySelectorAll('[data-dynamic-parameter]')];
     const names=controls.map(control=>control.name);
     controls.forEach(control=>{control.name='';});
-    try{previousSaveEvaluation(form);}finally{controls.forEach((control,index)=>{control.name=names[index];});}
+    let saved;try{saved=await previousSaveEvaluation(form);}finally{controls.forEach((control,index)=>{control.name=names[index];});}
+    if(saved===false)return false;
     const record=state.records.find(item=>item.id===state.selectedRecordId);
     if(!record)return;
     const stored=clone(record.parametrosAdicionales || {});
@@ -266,8 +267,9 @@
     Object.assign(stored,collected);
     record.parametrosAdicionales=stored;
     record.parametrosAdicionalesActualizados=now();
-    save();
+    await save();
     render();
+    return true;
   };
 
   const previousRecordDetailView=recordDetailView;
@@ -324,7 +326,8 @@
   function filteredChartRecords(){
     const values={from:'#chart-from',to:'#chart-to',campaign:'#chart-campaign',field:'#chart-field',farm:'#chart-farm',module:'#chart-module',lot:'#chart-lot',variety:'#chart-variety',quadrant:'#chart-quadrant',evaluator:'#chart-evaluator'};
     const filters=Object.fromEntries(Object.entries(values).map(([key,selector])=>[key,document.querySelector(selector)?.value || '']));
-    return state.records.filter(record=>{
+    const source=window.FenologiaFileAnalysis?.getChartRecords?.() ?? state.records;
+    return source.filter(record=>{
       if(filters.from&&record.date<filters.from)return false;if(filters.to&&record.date>filters.to)return false;
       if(filters.campaign&&inferredCampaign(record)!==filters.campaign)return false;if(filters.field&&record.field!==filters.field)return false;
       if(filters.farm&&record.farm!==filters.farm)return false;if(filters.module&&record.module!==filters.module)return false;
@@ -404,20 +407,10 @@
   };
 
   const originalDownloadFile=downloadFile;
-  async function checksum(core){
-    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(core)));
-    return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
-  }
-  downloadFile=function dynamicAwareDownload(filename,content,type){
+  downloadFile=async function dynamicAwareDownload(filename,content,type){
     if(/^RESPALDO_FENOLOGIA_.*\.json$/i.test(filename)){
       try{const payload=JSON.parse(content);payload.dynamicParameters=clone(parameters);content=JSON.stringify(payload,null,2);}catch{}
       return originalDownloadFile(filename,content,type);
-    }
-    if(/^CONFIG_FENOLOGIA_.*\.json$/i.test(filename)){
-      (async()=>{
-        try{const payload=JSON.parse(content),{checksum:oldChecksum,...core}=payload;core.dynamicParameters=clone(parameters);const enhanced={...core,checksum:await checksum(core)};originalDownloadFile(filename,JSON.stringify(enhanced,null,2),type);}catch{originalDownloadFile(filename,content,type);}
-      })();
-      return;
     }
     return originalDownloadFile(filename,content,type);
   };
@@ -462,21 +455,10 @@
     if(event.target.matches('#dynamic-parameter-form [name="type"]')){updateModalTypeUI();return;}
     if(event.target.id==='dynamic-chart-parameter'){ui.chartParameter=event.target.value;renderDynamicChartPanel();return;}
     if(event.target.id==='dynamic-chart-group'){ui.chartGroup=event.target.value;renderDynamicChartPanel();return;}
-    if(['config-package-file','login-config-file'].includes(event.target.id)&&event.target.files?.[0]){
-      (async()=>{
-        try{
-          const payload=JSON.parse(await event.target.files[0].text());
-          if(!Array.isArray(payload.dynamicParameters))return;
-          const {checksum:signature,...core}=payload;
-          if(signature&&await checksum(core)!==signature)return;
-          await replaceCatalog(payload.dynamicParameters,'Parámetros aplicados desde paquete de configuración');
-        }catch(error){console.warn('No se pudieron importar los parámetros configurables:',error);}
-      })();
-    }
   },true);
 
   window.FenologiaDynamicParameters={
-    ready:()=>initialize(),parameters:()=>clone(parameters),history:()=>clone(parameterHistory),replace:replaceCatalog,version:VERSION
+    ready:()=>initialize(),parameters:()=>clone(parameters),history:()=>clone(parameterHistory),replace:replaceCatalog,collect:collectDynamicValues,version:VERSION
   };
   initialize().then(()=>{if(state.catalog&&state.session)render();});
 })();

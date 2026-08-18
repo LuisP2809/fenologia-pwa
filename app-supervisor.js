@@ -143,7 +143,6 @@
     if(!record.farm) missing.push('FUNDO');
     if(!record.module) missing.push('MODULO');
     if(!record.lot) missing.push('TURNO-LOTE');
-    if(!record.quadrant) missing.push('CUADRANTE');
     if(!record.variety) missing.push('VARIEDAD');
     if(isBlank(record.plant) || Number(record.plant) < 1) missing.push('# PLANTA');
     return missing;
@@ -503,9 +502,10 @@
 
     supervisorState.busy = true;
     consolidateViewReal();
+    const previousRecords=state.records;
     state.records = [...analysis.recordMap.values()];
-    save();
-    await window.FenologiaDB.flush();
+    try{await save();}
+    catch(error){state.records=previousRecords;supervisorState.busy=false;consolidateViewReal();showToast('No se pudo guardar la consolidación. Los datos anteriores se conservaron.');return;}
 
     const batch = {
       id:batchId,

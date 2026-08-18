@@ -84,31 +84,44 @@
     return profiles[evaluatorId];
   }
 
-  function downloadEnrollmentProfile(evaluatorId){
+  async function downloadEnrollmentProfile(evaluatorId){
     if(!isAdmin()) return showToast('Solo el Administrador puede crear perfiles de autorización.');
     const profile = getAdminProfiles()[evaluatorId];
     if(!profile) return showToast('Primero crea el perfil del evaluador.');
-    const payload = {
+    const validUntil=new Date(new Date(profile.createdAt).getTime()+90*86400000).toISOString();
+    const core = {
       type:'fenologia-cleanup-profile',
-      version:1,
+      version:2,
       evaluatorId:profile.evaluatorId,
       evaluatorName:profile.evaluatorName,
       secret:profile.secret,
       issuedAt:profile.createdAt,
       issuedBy:profile.createdBy,
-      revision:profile.revision
+      revision:profile.revision,
+      validUntil
     };
-    downloadFile(`PERFIL_LIMPIEZA_${evaluatorId}.json`,JSON.stringify(payload,null,2),'application/json');
+    const payload=await window.FenologiaPackageSecurity.sign(core);
+    const result=await downloadFile(`PERFIL_LIMPIEZA_${evaluatorId}.json`,JSON.stringify(payload,null,2),'application/json');
+    if(!result?.ok)return showToast('La descarga del perfil fue cancelada.');
     showToast('Perfil descargado. Entrégalo únicamente al evaluador correspondiente.');
   }
 
   async function importEnrollmentProfile(file){
     const payload = JSON.parse(await file.text());
-    if(payload?.type!=='fenologia-cleanup-profile'||payload?.version!==1||!payload.evaluatorId||!payload.secret) throw new Error('El archivo no es un perfil de autorización válido.');
+    if(payload?.type!=='fenologia-cleanup-profile'||payload?.version!==2||!payload.evaluatorId||!payload.secret) throw new Error('El archivo no es un perfil firmado compatible.');
+    const verified=await window.FenologiaPackageSecurity.verify(payload);
+    if(verified.pendingTrust){
+      const shown=verified.fingerprint.match(/.{1,4}/g).join('-');
+      if(!confirm(`Primera vinculación administrativa. Compara esta huella por un canal confiable:\n\n${shown}\n\n¿Confirmas que pertenece al Administrador?`))throw new Error('La identidad firmante no fue autorizada.');
+      await window.FenologiaPackageSecurity.trust(payload.signature.publicKey);
+    }
+    const profile=verified.core;
     if(state.session.role!=='Evaluador') throw new Error('El perfil solo puede vincularse desde el rol Evaluador.');
-    if(payload.evaluatorId!==state.session.id) throw new Error('Este perfil pertenece a otro evaluador.');
-    await calculateWeeklyCode(payload);
-    saveDeviceProfile({...payload,enrolledAt:new Date().toISOString()});
+    if(profile.evaluatorId!==state.session.id) throw new Error('Este perfil pertenece a otro evaluador.');
+    if(!profile.validUntil||Date.now()>new Date(profile.validUntil).getTime())throw new Error('El perfil de limpieza está vencido. Solicita uno nuevo.');
+    const current=getDeviceProfile();if(current&&Number(profile.revision)<Number(current.revision||0))throw new Error('No se puede instalar una revisión anterior del perfil.');
+    await calculateWeeklyCode(profile);
+    saveDeviceProfile({...profile,signatureFingerprint:verified.fingerprint,enrolledAt:new Date().toISOString()});
     localStorage.removeItem(ATTEMPTS_KEY);
     return payload;
   }
@@ -119,7 +132,9 @@
     const profile = getDeviceProfile();
     if(!profile) return {ok:false,message:'Este celular todavía no está vinculado con un perfil creado por el Administrador.'};
     if(profile.evaluatorId!==state.session.id) return {ok:false,message:'El perfil vinculado no corresponde al usuario actual.'};
+    if(profile.validUntil&&Date.now()>new Date(profile.validUntil).getTime())return {ok:false,message:'El perfil de limpieza venció. Solicita al Administrador un perfil actualizado.'};
     const currentWeek = isoWeekInfo();
+    if(profile.lastVerifiedWeek&&currentWeek.key<profile.lastVerifiedWeek)return {ok:false,message:'La fecha del dispositivo es anterior a la última autorización registrada. Revisa fecha y hora.'};
     const attempts = attemptsState();
     if(attempts.lockedUntil && Date.now()<new Date(attempts.lockedUntil).getTime()){
       const minutes=Math.ceil((new Date(attempts.lockedUntil).getTime()-Date.now())/60000);
@@ -127,7 +142,7 @@
     }
     if(attempts.week!==currentWeek.key) resetAttempts();
     const expected = await calculateWeeklyCode(profile);
-    if(String(value).trim()===expected.code){ resetAttempts(); return {ok:true,week:expected.week,message:'Código semanal validado.'}; }
+    if(String(value).trim()===expected.code){ resetAttempts();saveDeviceProfile({...profile,lastVerifiedWeek:currentWeek.key,lastVerifiedAt:new Date().toISOString()});return {ok:true,week:expected.week,message:'Código semanal validado.'}; }
     const nextCount=(attempts.week===currentWeek.key?attempts.count:0)+1;
     const next={count:nextCount,week:currentWeek.key,lockedUntil:null};
     if(nextCount>=5) next.lockedUntil=new Date(Date.now()+10*60000).toISOString();
@@ -173,7 +188,7 @@
           </article>`;
         }).join('')}</div>
       </section>
-      <section class="panel security-note"><b>Importante</b><p>Cuando renueves un perfil, el perfil anterior deja de producir el mismo código. El evaluador deberá importar el archivo nuevo en su celular.</p></section>`);
+      <section class="panel security-note"><b>Importante</b><p>La renovación genera una revisión nueva y el evaluador debe importarla. Sin conexión central, un celular que conserve el perfil anterior podrá usarlo hasta su vencimiento; para revocación inmediata se requiere sincronización con un servidor.</p></section>`);
     evaluators.forEach(async user=>{
       const profile=profiles[user.id]; if(!profile)return;
       const target=document.querySelector(`[data-weekly-code="${user.id}"]`);
@@ -199,11 +214,19 @@
   const previousExportView=exportView;
   exportView=function securityExportView(){
     previousExportView();
+    const grid=document.querySelector('.export-grid');
+    if(grid&&!document.querySelector('.internal-backup-card')){
+      const manifest=readJson('fenologia-last-backup-manifest-v1',null);
+      grid.insertAdjacentHTML('beforebegin',`<section class="panel device-security-card internal-backup-card">
+        <div class="device-security-icon">💾</div>
+        <div><span>RECUPERACIÓN LOCAL</span><h2>Copia interna verificada</h2><p>${manifest?`Última copia: ${dateText(manifest.createdAt)} · ${Number(manifest.recordCount||0)} registros.`:'Crea un respaldo para habilitar una copia interna verificable antes de limpiar.'}</p></div>
+        <button class="secondary" id="restore-internal-backup" ${manifest?'':'disabled'}>Restaurar copia interna</button>
+      </section>`);
+    }
     if(state.session.role!=='Evaluador') return;
     const profile=getDeviceProfile();
-    const grid=document.querySelector('.export-grid');
-    if(!grid||document.querySelector('.device-security-card'))return;
-    grid.insertAdjacentHTML('beforebegin',`<section class="panel device-security-card">
+    if(!grid||document.querySelector('.cleanup-profile-card'))return;
+    grid.insertAdjacentHTML('beforebegin',`<section class="panel device-security-card cleanup-profile-card">
       <div class="device-security-icon">${profile?'🛡️':'🔗'}</div>
       <div><span>AUTORIZACIÓN DE LIMPIEZA</span><h2>${profile?'Celular vinculado':'Vincula este celular'}</h2><p>${profile?`Perfil de ${esc(profile.evaluatorName)} · vinculado ${dateText(profile.enrolledAt)}`:'Importa una sola vez el perfil entregado por el Administrador. Después podrás validar los códigos semanales sin internet.'}</p></div>
       <button class="${profile?'secondary':'primary'}" id="import-cleanup-profile">${profile?'Reemplazar perfil':'Importar perfil'}</button>
@@ -211,16 +234,37 @@
     </section>`);
   };
 
-  createBackup=function securedBackup(){
-    const payload={version:2,createdAt:new Date().toISOString(),records:state.records,assignments:state.assignments,cleanupHistory:getHistory()};
-    downloadFile(`RESPALDO_FENOLOGIA_${today().replaceAll('-','')}.json`,JSON.stringify(payload,null,2),'application/json');
-    localStorage.setItem('fenologia-last-backup',payload.createdAt);
-    showToast('Respaldo creado; incluye el historial de limpiezas.');
+  createBackup=async function securedBackup(){
+    await window.FenologiaDB?.flush?.();
+    const createdAt=new Date().toISOString();
+    const filename=`RESPALDO_FENOLOGIA_${today().replaceAll('-','')}.json`;
+    const payload={
+      type:'fenologia-full-backup',version:3,createdAt,records:state.records,assignments:state.assignments,
+      cleanupHistory:getHistory(),adminConfig:window.FenologiaAdmin?.config?.()||null,adminMap:window.FenologiaAdmin?.map?.()||null,
+      dynamicParameters:window.FenologiaDynamicParameters?.parameters?.()||[],deviceBinding:readJson('device-config-v1',null),
+      cleanupDeviceProfile:getDeviceProfile()
+    };
+    const result=await downloadFile(filename,JSON.stringify(payload,null,2),'application/json');
+    if(!result?.ok) return showToast('El respaldo fue cancelado; la limpieza continúa bloqueada.');
+    const newestAt=state.records.reduce((latest,record)=>Math.max(latest,new Date(record.updatedAt||record.createdAt||0).getTime()||0),0);
+    const manifest={createdAt,filename,recordCount:state.records.length,newestAt,externalPersisted:Boolean(result.persisted)};
+    let internalVerified=false;
+    if(window.FenologiaDB?.isReady?.()&&!window.FenologiaDB?.isFallback?.()){
+      await window.FenologiaDB.setSetting('verified-backup-v1',{payload,manifest});
+      const verified=await window.FenologiaDB.getSetting('verified-backup-v1');
+      internalVerified=verified?.manifest?.createdAt===createdAt&&verified?.manifest?.recordCount===state.records.length;
+    }
+    if(!result.persisted&&!internalVerified) return showToast('No se confirmó una copia persistente. La limpieza continúa bloqueada.');
+    localStorage.setItem('fenologia-last-backup',createdAt);
+    localStorage.setItem('fenologia-last-backup-manifest-v1',JSON.stringify(manifest));
+    showToast(result.persisted?'Respaldo guardado y verificado.':'Respaldo preparado y copia interna verificada.');
     exportView();
   };
 
   importBackup=async function securedImportBackup(file){
+    const previousRecords=state.records,previousAssignments=state.assignments;
     try{
+      if(file.size>25*1024*1024)throw new Error('El respaldo supera el límite de 25 MB.');
       const payload=JSON.parse(await file.text());
       if(!payload||!Array.isArray(payload.records)||typeof payload.assignments!=='object') throw new Error('El archivo no tiene la estructura de respaldo válida.');
       const existing=new Map(state.records.map(record=>[record.id,record]));let added=0,updated=0,unchanged=0;
@@ -232,14 +276,39 @@
         const incomingTime=new Date(incoming.updatedAt||incoming.createdAt||0).getTime();
         if(incomingTime>currentTime){existing.set(incoming.id,incoming);updated++;}else unchanged++;
       });
+      if(payload.records.length>100000)throw new Error('El respaldo supera el límite de 100 000 registros.');
       state.records=[...existing.values()];
       state.assignments={...state.assignments,...payload.assignments};
+      await save();
       if(Array.isArray(payload.cleanupHistory))mergeHistory(payload.cleanupHistory);
-      save();showToast(`Importación: ${added} nuevos, ${updated} actualizados, ${unchanged} existentes.`);exportView();
-    }catch(error){showToast(error.message||'No se pudo importar el respaldo.');}
+      showToast(`Importación: ${added} nuevos, ${updated} actualizados, ${unchanged} existentes.`);exportView();
+    }catch(error){state.records=previousRecords;state.assignments=previousAssignments;showToast(error.message||'No se pudo importar el respaldo.');}
   };
 
   document.addEventListener('click',async event=>{
+    if(event.target.closest('#restore-internal-backup')){
+      const previousRecords=state.records,previousAssignments=state.assignments;
+      try{
+        const stored=await window.FenologiaDB?.getSetting?.('verified-backup-v1');
+        const payload=stored?.payload;
+        if(!payload||!Array.isArray(payload.records)||typeof payload.assignments!=='object') throw new Error('No se encontró una copia interna válida en este dispositivo.');
+        if(payload.records.length>100000) throw new Error('La copia interna supera el límite de 100 000 registros.');
+        if(!confirm(`Se combinarán ${payload.records.length} registros de la copia interna con los datos actuales. ¿Continuar?`))return;
+        const existing=new Map(state.records.map(record=>[record.id,record]));
+        payload.records.forEach(record=>{
+          if(!record?.id)return;
+          const current=existing.get(record.id);
+          const currentTime=new Date(current?.updatedAt||current?.createdAt||0).getTime();
+          const backupTime=new Date(record.updatedAt||record.createdAt||0).getTime();
+          if(!current||backupTime>currentTime)existing.set(record.id,record);
+        });
+        state.records=[...existing.values()];state.assignments={...state.assignments,...payload.assignments};
+        await save();
+        if(Array.isArray(payload.cleanupHistory))mergeHistory(payload.cleanupHistory);
+        showToast(`Copia interna restaurada: ${payload.records.length} registros verificados.`);exportView();
+      }catch(error){state.records=previousRecords;state.assignments=previousAssignments;showToast(error.message||'No se pudo restaurar la copia interna.');}
+      return;
+    }
     const createButton=event.target.closest('[data-create-cleanup-profile]');
     if(createButton){
       if(!isAdmin())return showToast('Solo el Administrador puede crear autorizaciones.');
@@ -249,7 +318,7 @@
       createOrRotateProfile(evaluatorId);showToast(exists?'Perfil renovado.':'Perfil creado.');securityView();return;
     }
     const downloadButton=event.target.closest('[data-download-cleanup-profile]');
-    if(downloadButton){downloadEnrollmentProfile(downloadButton.dataset.downloadCleanupProfile);return;}
+    if(downloadButton){await downloadEnrollmentProfile(downloadButton.dataset.downloadCleanupProfile);return;}
     const copyButton=event.target.closest('[data-copy-cleanup-code]');
     if(copyButton){
       if(!isAdmin())return showToast('Solo el Administrador puede consultar el código.');
@@ -264,7 +333,10 @@
 
   document.addEventListener('change',async event=>{
     if(event.target.id!=='cleanup-profile-file'||!event.target.files?.[0])return;
-    try{await importEnrollmentProfile(event.target.files[0]);showToast('Celular vinculado correctamente con el Administrador.');exportView();}
+    try{
+      if(event.target.files[0].size>1024*1024) throw new Error('El perfil supera el límite de 1 MB.');
+      await importEnrollmentProfile(event.target.files[0]);showToast('Celular vinculado correctamente con el Administrador.');exportView();
+    }
     catch(error){showToast(error.message||'No se pudo importar el perfil.');}
     event.target.value='';
   });

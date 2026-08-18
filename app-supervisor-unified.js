@@ -73,7 +73,10 @@
         assignments:state.assignments,
         importHistory
       };
-      downloadFile(`Respaldo-Supervisor-${shortDate(createdAt)}.json`,JSON.stringify(payload,null,2),'application/json');
+      const result=await downloadFile(`Respaldo-Supervisor-${shortDate(createdAt)}.json`,JSON.stringify(payload,null,2),'application/json');
+      if(!result?.ok) return showToast('El respaldo fue cancelado.');
+      if(window.FenologiaDB?.isReady?.()&&!window.FenologiaDB?.isFallback?.()) await window.FenologiaDB.setSetting('verified-supervisor-backup-v1',payload);
+      if(!result.persisted&&window.FenologiaDB?.isFallback?.()) return showToast('No se confirmó una copia persistente del respaldo.');
       localStorage.setItem(LAST_BACKUP_KEY,createdAt);
       showToast(`Respaldo completo creado con ${state.records.length} registro(s).`);
       render();
@@ -84,25 +87,28 @@
   }
 
   async function restoreSupervisorBackup(file){
+    const previousRecords=state.records,previousAssignments=state.assignments;
     try{
+      if(file.size>25*1024*1024) throw new Error('El respaldo supera el límite de 25 MB.');
       const payload = JSON.parse(await file.text());
       if(payload?.type !== 'fenologia-supervisor-backup' || payload?.version !== 1 || !Array.isArray(payload.records)){
         throw new Error('El archivo no es un respaldo completo del Supervisor.');
       }
+      if(payload.records.length>100000) throw new Error('El respaldo supera el límite de 100 000 registros.');
       const created = payload.createdAt ? new Date(payload.createdAt).toLocaleString('es-PE') : 'fecha no disponible';
       const accepted = confirm(`Se reemplazará la base consolidada actual por el respaldo del ${created}, con ${payload.records.length} registro(s). ¿Deseas continuar?`);
       if(!accepted) return;
 
       state.records = payload.records;
       state.assignments = payload.assignments && typeof payload.assignments === 'object' ? payload.assignments : {};
-      save();
-      await window.FenologiaDB?.flush?.();
+      await save();
       if(Array.isArray(payload.importHistory)) await window.FenologiaDB?.setSetting?.(IMPORT_HISTORY_KEY,payload.importHistory);
       localStorage.setItem(LAST_BACKUP_KEY,new Date().toISOString());
       state.view = 'consolidate';
       render();
       showToast(`Respaldo restaurado: ${state.records.length} registro(s).`);
     }catch(error){
+      state.records=previousRecords;state.assignments=previousAssignments;
       console.error(error);
       showToast(error.message || 'No se pudo restaurar el respaldo.');
     }
