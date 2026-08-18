@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - agent/version-inicial-pwa
+      - 'fix/**'
     paths:
       - '*.html'
       - '*.js'
@@ -15,6 +17,7 @@ on:
       - 'assets/**'
       - 'scripts/**'
       - 'package.json'
+      - 'package-lock.json'
       - 'capacitor.config.json'
       - '.github/workflows/build-android-apk.yml'
   pull_request:
@@ -28,6 +31,7 @@ on:
       - 'assets/**'
       - 'scripts/**'
       - 'package.json'
+      - 'package-lock.json'
       - 'capacitor.config.json'
       - '.github/workflows/build-android-apk.yml'
 
@@ -55,8 +59,11 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Instalar dependencias
-        run: npm install
+        run: npm ci
 
       - name: Validar sintaxis de interfaz, mapa, gráficos y Excel
         run: |
@@ -121,6 +128,9 @@ jobs:
       - name: Validar PWA
         run: npm run verify:pwa
 
+      - name: Validar integridad y relación del GeoJSON
+        run: npm run verify:geojson
+
       - name: Preparar aplicación web
         run: npm run build:web
 
@@ -143,16 +153,20 @@ jobs:
           chmod +x android/gradlew
           npm run apk:debug
 
+      - name: Leer versión del paquete
+        id: package
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+
       - name: Preparar archivo descargable
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Fenologia-0.13.13-debug.apk
-          sha256sum dist/Fenologia-0.13.13-debug.apk > dist/Fenologia-0.13.13-debug.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/Fenologia-${{ steps.package.outputs.version }}-debug.apk"
+          sha256sum "dist/Fenologia-${{ steps.package.outputs.version }}-debug.apk" > "dist/Fenologia-${{ steps.package.outputs.version }}-debug.sha256"
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fenologia-APK-0.13.13
+          name: Fenologia-APK-${{ steps.package.outputs.version }}
           path: dist/*
           retention-days: 30
           if-no-files-found: error

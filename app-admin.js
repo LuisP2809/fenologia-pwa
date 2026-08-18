@@ -59,5 +59,16 @@ document.addEventListener('change',e=>{
 });
 window.addEventListener('online',render);window.addEventListener('offline',render);
 
-fetch('./data/catalogos.json',{cache:'no-store'}).then(r=>r.json()).then(c=>{state.catalog=c;render();}).catch(err=>{app.innerHTML=`<main class="fatal"><h1>No se pudo cargar Fenología</h1><p>${esc(err.message)}</p></main>`;});
+window.__FENOLOGIA_CATALOG_READY__=(async()=>{
+  const response=await fetch('./data/catalogos.json',{cache:'no-store'});
+  if(!response.ok)throw new Error(`El catálogo respondió ${response.status}.`);
+  const catalog=await response.json();
+  if(!catalog?.lotesAgrupados)throw new Error('El catálogo de lotes no tiene una estructura válida.');
+  state.catalog=catalog;
+  render();
+  return catalog;
+})();
+window.__FENOLOGIA_CATALOG_READY__.catch(err=>{
+  app.innerHTML=`<main class="fatal"><h1>No se pudo cargar Fenología</h1><p>${esc(err.message)}</p></main>`;
+});
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');

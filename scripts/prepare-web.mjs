@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const root = process.cwd();
@@ -19,6 +19,7 @@ for (const entry of entries) {
 for (const folder of folders) {
   await cp(path.join(root, folder), path.join(output, folder), { recursive: true });
 }
+await access(path.join(output,'data','lotes-mapa.geojson'));
 
 const packageInfo = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 await writeFile(

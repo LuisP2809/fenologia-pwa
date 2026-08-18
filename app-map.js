@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.8.2', MAP_PATH='data/lotes-mapa.geojson', W=1200, H=760, PAD=32;
+  const VERSION='0.13.14', MAP_PATH='data/lotes-mapa.geojson', W=1200, H=760, PAD=32;
   const iso=(d=new Date())=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
   const m={data:null,loading:null,error:'',from:iso(),to:iso(),field:'',farm:'',module:'',variety:'',evaluator:'',lot:'',zoom:1,x:0,y:0,drag:null};
   const roles=()=>['Evaluador','Supervisor','Administrador'].includes(state.session?.role);
@@ -17,6 +17,40 @@
     for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
     const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
     return JSON.parse(await new Response(stream).text());
+  }
+
+  function catalogLots(){
+    const lots=new Set();
+    Object.values(state.catalog?.lotesAgrupados||{}).forEach(farms=>{
+      Object.values(farms||{}).forEach(modules=>{
+        Object.values(modules||{}).forEach(items=>(items||[]).forEach(lot=>lots.add(String(lot).trim())));
+      });
+    });
+    return lots;
+  }
+
+  function validateGeoJSON(data){
+    if(data?.type!=='FeatureCollection'||!Array.isArray(data.features))throw Error('El archivo cargado no contiene una colección GeoJSON válida.');
+    const expected=catalogLots(),seen=new Set(),invalid=[];
+    const polygons=geometry=>geometry?.type==='Polygon'?[geometry.coordinates]:geometry?.type==='MultiPolygon'?geometry.coordinates:null;
+    data.features.forEach((feature,index)=>{
+      const lot=String(feature?.properties?.LOTE||'').trim(),parts=polygons(feature?.geometry);
+      if(!lot||seen.has(lot)||!parts){invalid.push(lot||`geometría ${index+1}`);return;}
+      seen.add(lot);
+      for(const polygon of parts){
+        for(const ring of polygon||[]){
+          const first=ring?.[0],last=ring?.[ring.length-1];
+          if(!Array.isArray(ring)||ring.length<4||!first||!last||first[0]!==last[0]||first[1]!==last[1]||ring.some(point=>!Array.isArray(point)||point.length<2||!Number.isFinite(point[0])||!Number.isFinite(point[1])))invalid.push(lot);
+        }
+      }
+    });
+    const missing=[...expected].filter(lot=>!seen.has(lot)),unknown=[...seen].filter(lot=>!expected.has(lot));
+    if(invalid.length||missing.length||unknown.length){
+      const detail=[invalid.length&&`geometrías inválidas: ${uniq(invalid).slice(0,8).join(', ')}`,missing.length&&`sin polígono: ${missing.slice(0,8).join(', ')}`,unknown.length&&`fuera del catálogo: ${unknown.slice(0,8).join(', ')}`].filter(Boolean).join('; ');
+      throw Error(`El GeoJSON no coincide con el catálogo (${detail}).`);
+    }
+    data.stats={...(data.stats||{}),lotesActivos:seen.size,zonasReferencia:0,featuresNormalizadas:data.features.length};
+    return data;
   }
 
   async function parseMapResponse(response,source){
@@ -85,8 +119,8 @@
           : networkError?.message||'No se pudo contactar al servidor.';
         throw Error(`${reason} Verifica que la terminal continúe ejecutando el servidor y vuelve a abrir el puerto.`);
       }
-      const data=await unpack(payload);
-      if(data?.type!=='FeatureCollection'||!Array.isArray(data.features)) throw Error('El archivo cargado no contiene una colección GeoJSON válida.');
+      if(!state.catalog?.lotesAgrupados&&window.__FENOLOGIA_CATALOG_READY__)await window.__FENOLOGIA_CATALOG_READY__;
+      const data=validateGeoJSON(await unpack(payload));
       m.data=data;m.error='';return data;
     })().catch(error=>{m.error=error.message||'No se pudo cargar el mapa.';throw error;}).finally(()=>m.loading=null);
     return m.loading;
@@ -198,7 +232,7 @@
   }
   function readFilters(){['from','to','field','farm','module','variety','evaluator'].forEach(k=>m[k]=document.querySelector(`#map-${k}`)?.value||'');}
   const oldMap=mapView;mapView=function(){return roles()?renderPage():oldMap();};
-  const oldSide=sidebar;sidebar=function(){return oldSide().replace(/Versión\s+[0-9.]+/,'Versión 0.8.2');};
+  const oldSide=sidebar;sidebar=function(){return oldSide().replace(/Versión\s+[0-9.]+/,`Versión ${VERSION}`);};
   document.addEventListener('change',e=>{if(state.view!=='map'||!roles()||!['map-from','map-to','map-field','map-farm','map-module','map-variety','map-evaluator'].includes(e.target.id))return;readFilters();if(e.target.id==='map-field'){m.farm='';m.module='';m.variety='';}if(e.target.id==='map-farm')m.module='';m.lot='';fit();renderPage();});
   document.addEventListener('click',e=>{
     if(state.view!=='map'||!roles())return;
