@@ -104,7 +104,6 @@
     const files = [...fileList].filter(file=>/\.xlsx$/i.test(file.name));
     if(!files.length) throw new Error('Selecciona uno o varios archivos Excel .xlsx.');
     target.busy = true;
-    target.files = files.map(file=>({name:file.name,size:file.size}));
     showToast(`Leyendo ${files.length} archivo(s) Excel…`);
     const items = [];
     for(const file of files){
@@ -112,7 +111,7 @@
       items.push({file,parsed});
     }
     const result = combineParsed(items);
-    Object.assign(target,result,{busy:false});
+    Object.assign(target,result,{files:files.map(file=>({name:file.name,size:file.size})),busy:false});
     return result;
   }
 
@@ -147,7 +146,7 @@
     const weeks = weeksOf(records);
     if(weeks.length===1) return `Fenologia-sem${weeks[0]}.xlsx`;
     if(weeks.length>1) return `Fenologia-sem${weeks[0]}-a-sem${weeks.at(-1)}.xlsx`;
-    return `Fenologia-consolidado-${new Date().toISOString().slice(0,10)}.xlsx`;
+    return `Fenologia-consolidado-${typeof today==='function'?today():new Date().toLocaleDateString('en-CA',{timeZone:'America/Lima'})}.xlsx`;
   }
 
   async function exportConsolidation(){
@@ -171,7 +170,6 @@
         return;
       }
       if(!analysis.records.length) throw new Error('Los archivos no contienen evaluaciones válidas.');
-      state.records = analysis.records.map(record=>({...record}));
       analysis.loaded = true;
       window.__FENOLOGIA_ANALYSIS_SESSION = {
         version:VERSION,
@@ -192,7 +190,6 @@
 
   function clearAnalysis(){
     analysis.files=[];analysis.records=[];analysis.stats=null;analysis.issues=[];analysis.conflicts=[];analysis.loaded=false;
-    state.records=[];
     delete window.__FENOLOGIA_ANALYSIS_SESSION;
     render();
     showToast('Base de análisis vacía. Selecciona los Excel que quieras analizar.');
@@ -262,11 +259,6 @@
     `;document.head.appendChild(style);
   }
 
-  async function eraseLegacyHistoryStorage(){
-    try{ await window.FenologiaDB?.setSetting?.('supervisor-import-history-v1',[]); }catch{}
-    try{ localStorage.removeItem('supervisor-import-history-v1'); }catch{}
-  }
-
   const previousRender = render;
   render = function fileDrivenRender(){
     const result = previousRender();
@@ -304,8 +296,7 @@
   },true);
 
   installStyles();
-  eraseLegacyHistoryStorage();
   decorateConsolidate();
   decorateCharts();
-  window.FenologiaFileAnalysis={version:VERSION,consolidation,analysis};
+  window.FenologiaFileAnalysis={version:VERSION,consolidation,analysis,getChartRecords:()=>analysis.loaded?analysis.records:[]};
 })();

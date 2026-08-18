@@ -180,18 +180,18 @@
 
   const browserDownload=typeof downloadFile==='function'?downloadFile:null;
   if(browserDownload){
-    downloadFile=function platformDownload(name,content,type='text/plain;charset=utf-8'){
+    downloadFile=async function platformDownload(name,content,type='text/plain;charset=utf-8'){
       if(isNative()){
-        exportNative(name,content,type).catch(()=>{});
-        return;
+        const nativeResult=await exportNative(name,content,type);
+        return {ok:true,persisted:Boolean(nativeResult.persistent),name:nativeResult.fileName,native:true};
       }
 
-      browserDownload(name,content,type);
-      if(/android|iphone|ipad|ipod/i.test(navigator.userAgent)){
-        shareWebFile(name,content,type).then(shared=>{
-          if(shared) showToast('Archivo descargado y panel de compartir abierto.');
-        });
+      const result=await browserDownload(name,content,type);
+      if(result?.ok&&/android|iphone|ipad|ipod/i.test(navigator.userAgent)){
+        const shared=await shareWebFile(name,content,type);
+        if(shared) showToast('Archivo preparado y panel de compartir abierto.');
       }
+      return result;
     };
   }
 

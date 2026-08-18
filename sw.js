@@ -1,12 +1,67 @@
-const CACHE='fenologia-v0.13.13-login-clean';
+const CACHE='fenologia-v0.14.0-map-stable';
+const VERSION='0.14.0';
+const versioned=path=>`${path}?v=${VERSION}`;
 const ASSETS=[
-  './','./index.html','./manifest.webmanifest?v=0.13.13','./icons/icon-192.svg?v=0.13.13','./icons/icon-512.svg?v=0.13.13','./icons/icon-maskable.svg?v=0.13.13','./data/catalogos.json','./data/map-inline-1.js?v=0.13.13','./data/map-inline-2.js?v=0.13.13','./data/map-inline-3.js?v=0.13.13','./data/map-inline-4.js?v=0.13.13','./data/map-inline-5.js?v=0.13.13','./app-map-inline-source.js?v=0.13.13','./app-db.js?v=0.13.13','./app-bootstrap.js?v=0.13.13','./app-core.js?v=0.13.13','./app-eval.js?v=0.13.13','./app-admin.js?v=0.13.13','./app-security.js?v=0.13.13','./app-workflow-patches.js?v=0.13.13','./app-export-filters.js?v=0.13.13','./app-db-ui.js?v=0.13.13','./app-supervisor.js?v=0.13.13','./app-supervisor-role.js?v=0.13.13','./app-supervisor-unified.js?v=0.13.13','./app-map.js?v=0.13.13','./app-charts.js?v=0.13.13','./app-admin-complete.js?v=0.13.13','./app-admin-dni-fix.js?v=0.13.13','./app-user-access-package.js?v=0.13.13','./app-admin-role-cleanup.js?v=0.13.13','./app-dynamic-parameters.js?v=0.13.13','./app-dynamic-supervisor.js?v=0.13.13','./app-stage-analytics.js?v=0.13.13','./app-stage-analytics-ui.js?v=0.13.13','./app-charts-refinement.js?v=0.13.13','./app-platform.js?v=0.13.13','./app-xlsx-workflow.js?v=0.13.13','./app-xlsx-compat.js?v=0.13.13','./app-supervisor-file-analysis.js?v=0.13.13','./app-analysis-source-guard.js?v=0.13.13','./app-evaluator-navigation.js?v=0.13.13','./app-evaluation-flow.js?v=0.13.13','./app-release.js?v=0.13.13','./css-core.css?v=0.13.13','./css-ui.css?v=0.13.13','./css-extra.css?v=0.13.13','./css-workflow-patches.css?v=0.13.13','./css-security.css?v=0.13.13','./css-export-filters.css?v=0.13.13','./css-db.css?v=0.13.13','./css-supervisor.css?v=0.13.13','./css-supervisor-role.css?v=0.13.13','./css-supervisor-unified.css?v=0.13.13','./css-mobile-header.css?v=0.13.13','./css-map.css?v=0.13.13','./css-charts.css?v=0.13.13','./css-stage-analytics.css?v=0.13.13','./css-admin-complete.css?v=0.13.13','./css-dynamic-parameters.css?v=0.13.13','./css-platform.css?v=0.13.13','./css-xlsx-workflow.css?v=0.13.13'
+  './','./index.html',versioned('./manifest.webmanifest'),
+  versioned('./icons/icon-192.png'),versioned('./icons/icon-512.png'),versioned('./icons/icon-maskable.png'),
+  versioned('./icons/icon-192.svg'),versioned('./icons/icon-512.svg'),versioned('./icons/icon-maskable.svg'),
+  './data/catalogos.json',versioned('./data/lotes-mapa.geojson'),
+  versioned('./app-db.js'),versioned('./app-bootstrap.js'),versioned('./app-core.js'),versioned('./app-eval.js'),
+  versioned('./app-admin.js'),versioned('./app-credentials.js'),versioned('./app-package-security.js'),versioned('./app-security.js'),versioned('./app-workflow-patches.js'),versioned('./app-export-filters.js'),
+  versioned('./app-db-ui.js'),versioned('./app-supervisor.js'),versioned('./app-supervisor-role.js'),versioned('./app-supervisor-unified.js'),
+  versioned('./app-map.js'),versioned('./app-charts.js'),versioned('./app-admin-complete.js'),versioned('./app-admin-dni-fix.js'),
+  versioned('./app-user-access-package.js'),versioned('./app-admin-role-cleanup.js'),versioned('./app-dynamic-parameters.js'),versioned('./app-dynamic-supervisor.js'),
+  versioned('./app-stage-analytics.js'),versioned('./app-stage-analytics-ui.js'),versioned('./app-charts-refinement.js'),versioned('./app-platform.js'),
+  versioned('./app-xlsx-workflow.js'),versioned('./app-xlsx-compat.js'),versioned('./app-supervisor-file-analysis.js'),versioned('./app-analysis-source-guard.js'),
+  versioned('./app-evaluator-navigation.js'),versioned('./app-evaluation-flow.js'),versioned('./app-session-security.js'),versioned('./app-release.js'),
+  versioned('./css-core.css'),versioned('./css-ui.css'),versioned('./css-extra.css'),versioned('./css-workflow-patches.css'),
+  versioned('./css-security.css'),versioned('./css-export-filters.css'),versioned('./css-db.css'),versioned('./css-supervisor.css'),
+  versioned('./css-supervisor-role.css'),versioned('./css-supervisor-unified.css'),versioned('./css-mobile-header.css'),versioned('./css-map.css'),
+  versioned('./css-charts.css'),versioned('./css-stage-analytics.css'),versioned('./css-admin-complete.css'),versioned('./css-dynamic-parameters.css'),
+  versioned('./css-platform.css'),versioned('./css-xlsx-workflow.css')
 ];
-self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(async cache=>{const results=await Promise.allSettled(ASSETS.map(asset=>cache.add(asset)));results.forEach((result,index)=>{if(result.status==='rejected')console.warn('No se pudo guardar offline:',ASSETS[index],result.reason);});}));});
+
+self.addEventListener('install',event=>{
+  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)));
+});
 self.addEventListener('message',event=>{if(event.data?.type==='SKIP_WAITING')self.skipWaiting();});
-self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));});
+self.addEventListener('activate',event=>{
+  event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('fenologia-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));
+});
+function fetchWithTimeout(request,timeout=4000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeout);
+  return fetch(request,{signal:controller.signal}).finally(()=>clearTimeout(timer));
+}
+async function cacheFirst(request){
+  const cache=await caches.open(CACHE);
+  const cached=await cache.match(request,{ignoreSearch:true});
+  const refresh=fetchWithTimeout(request).then(response=>{if(response.ok)cache.put(request,response.clone());return response;}).catch(()=>null);
+  if(cached){refresh.catch(()=>{});return cached;}
+  return await refresh;
+}
 self.addEventListener('fetch',event=>{
   if(event.request.method!=='GET')return;
-  const requestUrl=new URL(event.request.url);if(requestUrl.origin!==self.location.origin)return;
-  event.respondWith((async()=>{try{const response=await fetch(event.request);if(response?.ok){const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy)).catch(()=>{});}return response;}catch{const cached=await caches.match(event.request,{ignoreSearch:true});if(cached)return cached;if(event.request.mode==='navigate'){const page=await caches.match('./index.html',{ignoreSearch:true});if(page)return page;}return new Response('Recurso no disponible sin conexión.',{status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}});}})());
+  const requestUrl=new URL(event.request.url);
+  if(requestUrl.origin!==self.location.origin)return;
+  event.respondWith((async()=>{
+    const staticAsset=/\.(?:js|css|svg|png|webmanifest|geojson|json)$/i.test(requestUrl.pathname);
+    if(staticAsset){
+      const response=await cacheFirst(event.request);
+      if(response)return response;
+    }
+    try{
+      const response=await fetchWithTimeout(event.request);
+      if(response?.ok){const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy)).catch(()=>{});}
+      return response;
+    }catch{
+      const cached=await caches.match(event.request,{ignoreSearch:true});
+      if(cached)return cached;
+      if(event.request.mode==='navigate'){
+        const page=await caches.match('./index.html',{ignoreSearch:true});
+        if(page)return page;
+      }
+      return new Response('Recurso no disponible sin conexión.',{status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}});
+    }
+  })());
 });

@@ -3,14 +3,31 @@ const toast = document.querySelector('#toast');
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 
-const users = [
-  {id:'ADM-01', name:'Administrador Demo', pin:'12345678', role:'Administrador'},
-  {id:'SUP-01', name:'Supervisor Demo', pin:'11223344', role:'Supervisor'},
-  {id:'EVA-01', name:'Evaluador Demo', pin:'87654321', role:'Evaluador'}
-];
+const developmentMode=['localhost','127.0.0.1'].includes(location.hostname)||location.hostname.endsWith('.app.github.dev');
+const users = developmentMode ? [
+  {id:'ADM-01', name:'Administrador local', pin:'12345678', role:'Administrador'},
+  {id:'SUP-01', name:'Supervisor local', pin:'11223344', role:'Supervisor'},
+  {id:'EVA-01', name:'Evaluador local', pin:'87654321', role:'Evaluador'}
+] : [];
 const bootstrapState = window.__FENOLOGIA_BOOTSTRAP_STATE__ || {};
+function readStoredSession(){
+  try{
+    const session=JSON.parse(localStorage.getItem('fenologia-session') || 'null');
+    if(!session) return null;
+    const expiresAt=new Date(session.expiresAt||0).getTime();
+    const lastActiveAt=new Date(session.lastActiveAt||0).getTime();
+    if(!expiresAt||Date.now()>expiresAt||!lastActiveAt||Date.now()-lastActiveAt>30*60*1000){
+      localStorage.removeItem('fenologia-session');
+      return null;
+    }
+    return session;
+  }catch{
+    localStorage.removeItem('fenologia-session');
+    return null;
+  }
+}
 const state = {
-  session: JSON.parse(localStorage.getItem('fenologia-session') || 'null'),
+  session: readStoredSession(),
   records: Array.isArray(bootstrapState.records) ? bootstrapState.records : JSON.parse(localStorage.getItem('fenologia-records') || '[]'),
   assignments: bootstrapState.assignments && typeof bootstrapState.assignments === 'object' ? bootstrapState.assignments : JSON.parse(localStorage.getItem('fenologia-assignments') || '{}'),
   catalog: null,
@@ -26,18 +43,28 @@ const stages = Array.from({length:17}, (_,i)=>`E${String(i+1).padStart(2,'0')}`)
 
 function save(){
   if(window.FenologiaDB?.isReady()){
-    window.FenologiaDB.saveAppState(state.records,state.assignments).catch(error=>{
+    return window.FenologiaDB.saveAppState(state.records,state.assignments).catch(error=>{
       console.error(error);
       showToast('No se pudo confirmar el guardado local. Revisa el almacenamiento.');
+      throw error;
     });
-    return;
   }
-  localStorage.setItem('fenologia-records', JSON.stringify(state.records));
-  localStorage.setItem('fenologia-assignments', JSON.stringify(state.assignments));
+  try{
+    localStorage.setItem('fenologia-records', JSON.stringify(state.records));
+    localStorage.setItem('fenologia-assignments', JSON.stringify(state.assignments));
+    return Promise.resolve();
+  }catch(error){
+    showToast('No se pudo confirmar el guardado local. Revisa el almacenamiento.');
+    return Promise.reject(error);
+  }
 }
 function showToast(text){ toast.textContent=text; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),2300); }
 function esc(v=''){ return String(v).replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
-function today(){ return new Date().toISOString().slice(0,10); }
+function today(value=new Date()){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(value);
+  const read=type=>parts.find(part=>part.type===type)?.value||'';
+  return `${read('year')}-${read('month')}-${read('day')}`;
+}
 function options(list, placeholder='Seleccionar'){ return `<option value="">${placeholder}</option>${list.map(v=>`<option>${esc(v)}</option>`).join('')}`; }
 function roleClass(){ return state.session?.role.toLowerCase(); }
 function countToday(){ return state.records.filter(r=>r.date===today()).length; }
@@ -58,11 +85,11 @@ function loginView(){
     <section class="login-card">
       <div><span class="eyebrow green">ACCESO SEGURO</span><h2>Bienvenido</h2><p>Ingresa con el nombre y DNI registrados.</p></div>
       <form id="login-form">
-        <label>Nombre completo<input name="name" value="Evaluador Demo" autocomplete="username" required></label>
-        <label>DNI / PIN<input name="pin" value="87654321" inputmode="numeric" maxlength="8" autocomplete="current-password" required></label>
+        <label>Nombre completo<input name="name" autocomplete="username" required></label>
+        <label>DNI / PIN<input name="pin" inputmode="numeric" maxlength="8" autocomplete="current-password" required></label>
         <button class="primary wide">Ingresar al sistema <span>→</span></button>
       </form>
-      <div class="demo-note"><b>Acceso de demostración</b><span>Evaluador Demo · 87654321</span></div>
+      ${developmentMode?'<div class="demo-note"><b>Entorno local de desarrollo</b><span>Las cuentas locales no se incluyen en producción.</span></div>':''}
     </section>
   </main>`;
 }
@@ -99,7 +126,7 @@ function homeView(){
       ${metric(countToday(),'Evaluaciones de hoy',icons.clipboard,'Guardadas localmente')}
       ${metric(lotsToday(),'Lotes evaluados',icons.map,'En la fecha actual')}
       ${metric(state.records.length,'Registros disponibles',icons.detail,'Histórico del dispositivo')}
-      ${metric(navigator.onLine?'Conectado':'Offline', 'Estado del sistema', icons.cloud, navigator.onLine?'Listo para sincronizar':'Puedes seguir trabajando')}
+      ${metric(navigator.onLine?'Conectado':'Offline', 'Estado del sistema', icons.cloud, navigator.onLine?'Recursos en línea disponibles':'Puedes seguir trabajando')}
     </section>
     <section class="panel"><div class="panel-head"><div><span>ACCESOS RÁPIDOS</span><h2>¿Qué deseas hacer?</h2></div></div>
       <div class="actions-grid">
@@ -111,7 +138,7 @@ function homeView(){
     </section>
     <section class="two-cols">
       <article class="panel"><div class="panel-head"><div><span>ACTIVIDAD RECIENTE</span><h2>Últimos registros</h2></div><button class="link" data-view="records">Ver todos</button></div>${recentRows()}</article>
-      <article class="panel status-panel"><div class="panel-head"><div><span>ESTADO LOCAL</span><h2>Trabajo sin internet</h2></div></div><div class="status-illustration">${icons.leaf}</div><p>La información se guarda en este equipo. Cuando exista conexión podrás exportar o sincronizar los datos.</p><div class="status-line"><span>Pendientes de respaldo</span><b>${state.records.length}</b></div></article>
+      <article class="panel status-panel"><div class="panel-head"><div><span>ESTADO LOCAL</span><h2>Trabajo sin internet</h2></div></div><div class="status-illustration">${icons.leaf}</div><p>La información se guarda en este equipo. La conexión permite actualizar recursos; el intercambio de datos se realiza mediante respaldos y archivos Excel.</p><div class="status-line"><span>Pendientes de respaldo</span><b>${state.records.length}</b></div></article>
     </section>`);
 }
 function recentRows(){

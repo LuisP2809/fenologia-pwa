@@ -1,7 +1,7 @@
 (() => {
-  const APP_VERSION = '0.13.13';
+  const APP_VERSION = '0.14.0';
   const scripts = [
-    'app-core.js','app-eval.js','app-admin.js','app-security.js','app-workflow-patches.js','app-export-filters.js','app-db-ui.js','app-supervisor.js','app-supervisor-role.js','app-supervisor-unified.js','data/map-inline-1.js','data/map-inline-2.js','data/map-inline-3.js','data/map-inline-4.js','data/map-inline-5.js','app-map-inline-source.js','app-map.js','app-charts.js','app-admin-complete.js','app-admin-dni-fix.js','app-user-access-package.js','app-admin-role-cleanup.js','app-dynamic-parameters.js','app-dynamic-supervisor.js','app-stage-analytics.js','app-stage-analytics-ui.js','app-charts-refinement.js','app-platform.js','app-xlsx-workflow.js','app-xlsx-compat.js','app-supervisor-file-analysis.js','app-analysis-source-guard.js','app-evaluator-navigation.js','app-evaluation-flow.js','app-release.js'
+    'app-core.js','app-eval.js','app-admin.js','app-credentials.js','app-package-security.js','app-security.js','app-workflow-patches.js','app-export-filters.js','app-db-ui.js','app-supervisor.js','app-supervisor-role.js','app-supervisor-unified.js','app-map.js','app-charts.js','app-admin-complete.js','app-admin-dni-fix.js','app-user-access-package.js','app-admin-role-cleanup.js','app-dynamic-parameters.js','app-dynamic-supervisor.js','app-stage-analytics.js','app-stage-analytics-ui.js','app-charts-refinement.js','app-platform.js','app-xlsx-workflow.js','app-xlsx-compat.js','app-supervisor-file-analysis.js','app-analysis-source-guard.js','app-evaluator-navigation.js','app-evaluation-flow.js','app-session-security.js','app-release.js'
   ];
   function loadingView(message,detail='Preparando el almacenamiento local seguro…'){
     const app=document.querySelector('#app');if(!app)return;
@@ -14,7 +14,7 @@
     let changed=false;
     try{
       if('serviceWorker' in navigator){const registrations=await navigator.serviceWorker.getRegistrations();if(registrations.length){await Promise.all(registrations.map(registration=>registration.unregister()));changed=true;}}
-      if('caches' in window){const names=await caches.keys();if(names.length){await Promise.all(names.map(name=>caches.delete(name)));changed=true;}}
+      if('caches' in window){const names=(await caches.keys()).filter(name=>name.startsWith('fenologia-'));if(names.length){await Promise.all(names.map(name=>caches.delete(name)));changed=true;}}
     }catch(error){console.warn('No se pudo limpiar completamente el entorno de Codespaces:',error);}
     sessionStorage.setItem(marker,'done');
     if(changed||navigator.serviceWorker?.controller){const next=new URL(location.href);next.searchParams.set('fresh',APP_VERSION);location.replace(next.href);return true;}
@@ -28,12 +28,14 @@
     loadingView(result.ok?'Almacenamiento listo':'Modo de compatibilidad activo',result.ok?`${result.recordCount} registro(s) disponibles. Cargando la aplicación…`:'IndexedDB no estuvo disponible; se conservará el almacenamiento anterior.');
     for(const path of scripts){
       await loadScript(path);
-      if(path==='app-map-inline-source.js'){loadingView('Validando mapa de lotes','Comprobando que los 254 lotes coincidan con la base actualizada…');await window.__FENOLOGIA_MAP_VALIDATION;}
       if(path==='app-admin-complete.js'){loadingView('Preparando Administrador','Cargando usuarios, campañas, catálogos y seguridad local…');await window.FenologiaAdmin?.ready();}
       if(path==='app-dynamic-parameters.js'){loadingView('Preparando parámetros','Cargando las variables adicionales y sus reglas de evaluación…');await window.FenologiaDynamicParameters?.ready();}
     }
-    if(!window.__FENOLOGIA_MAP_INFO?.ready)throw new Error('Los bloques internos del mapa no se cargaron completamente.');
     window.dispatchEvent(new CustomEvent('fenologia-app-ready',{detail:{version:APP_VERSION,storage:result}}));
   }
-  start().catch(error=>{console.error(error);const app=document.querySelector('#app');if(app)app.innerHTML=`<main class="fatal"><h1>No se pudo iniciar Fenología</h1><p>${String(error.message||error)}</p><button onclick="location.reload()">Reintentar</button></main>`;});
+  start().catch(error=>{
+    console.error(error);const app=document.querySelector('#app');if(!app)return;
+    app.innerHTML=`<main class="fatal"><h1>No se pudo iniciar Fenología</h1><p>${String(error.message||error)}</p><button id="retry-app-start">Reintentar</button></main>`;
+    document.querySelector('#retry-app-start')?.addEventListener('click',()=>location.reload());
+  });
 })();

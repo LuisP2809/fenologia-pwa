@@ -26,17 +26,18 @@
   };
 
   const originalSaveEvaluation = saveEvaluation;
-  saveEvaluation = function continuousSaveEvaluation(form){
-    if(state.editingId){ originalSaveEvaluation(form); return; }
+  saveEvaluation = async function continuousSaveEvaluation(form){
+    if(state.editingId) return originalSaveEvaluation(form);
 
     const data = normalizeIntegerFields(Object.fromEntries(new FormData(form)));
-    const plant = 1 + state.records.filter(record =>
+    const matching = state.records.filter(record =>
       record.date === data.date && record.evaluatorId === state.session.id && record.lot === data.lot &&
       record.variety === data.variety && record.quadrant === data.quadrant
-    ).length;
+    );
+    const plant = 1+matching.reduce((highest,record)=>Math.max(highest,Number(record.plant)||0),0);
 
     const record = {...data,id:`EV-${Date.now()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`,plant,evaluatorId:state.session.id,evaluator:state.session.name,createdAt:new Date().toISOString()};
-    state.records.push(record);state.selectedRecordId=record.id;save();
+    state.records.push(record);state.selectedRecordId=record.id;await save();
     form.querySelectorAll('input[type="number"]').forEach(input=>{input.value='';});updatePlant(form);
     const nextPlant=plant+1;showToast(`Evaluación guardada · Planta ${plant}. Continúa con Planta ${nextPlant}.`);
     let notice=form.querySelector('.continuous-save-notice');
@@ -56,10 +57,10 @@
     const overlay=document.createElement('div');overlay.className='cleanup-modal-overlay';
     overlay.innerHTML=`<section class="cleanup-modal" role="dialog" aria-modal="true" aria-labelledby="cleanup-title">
       <div class="cleanup-modal-symbol">⚠️</div><span>CONFIRMACIÓN DE LIMPIEZA</span><h2 id="cleanup-title">Antes de eliminar los datos</h2>
-      <p>Se eliminarán <b>${state.records.length} registros</b> de este dispositivo. Esta acción no se puede deshacer desde la aplicación.</p>
+      <p>Se eliminarán <b>${state.records.length} registros</b> de la vista activa. La copia interna verificada seguirá disponible desde “Exportar e importar”.</p>
       <div class="cleanup-weekly-note"><b>Recomendación:</b> realiza esta limpieza semanalmente, después de respaldar la información.</div>
       <label class="cleanup-check"><input type="checkbox" id="confirm-supervisor"><span>Ya comuniqué a mi supervisor que realizaré la limpieza de datos.</span></label>
-      <label class="cleanup-check"><input type="checkbox" id="confirm-backup"><span>Confirmo que descargué un respaldo actualizado y que no registré evaluaciones nuevas después.</span></label>
+      <label class="cleanup-check"><input type="checkbox" id="confirm-backup"><span>Confirmo que creé un respaldo verificado y que no registré evaluaciones nuevas después.</span></label>
       ${requiresCode?`<section class="cleanup-code-stage" id="cleanup-code-stage" hidden>
         <span>AUTORIZACIÓN DEL ADMINISTRADOR</span><h3>Ingrese el código semanal</h3>
         <p>${linked?'Solicita al Administrador el código vigente de 6 dígitos. Funciona sin internet.':'Este celular no está vinculado. Importa primero el perfil entregado por el Administrador desde “Exportar e importar”.'}</p>
@@ -94,11 +95,20 @@
       status.textContent=result.message;status.className=`cleanup-code-status ${result.ok?'success':'error'}`;
       confirmButton.disabled=!(supervisor.checked&&backup.checked&&authorization.ok);
     });
-    confirmButton.addEventListener('click',()=>{
+    confirmButton.addEventListener('click',async()=>{
       if(!(supervisor.checked&&backup.checked&&authorization.ok))return;
       const recordCount=state.records.length;const lastBackup=localStorage.getItem('fenologia-last-backup');
-      window.cleanupSecurity?.recordCleanup({recordCount,lastBackup,authorizationWeek:authorization.week,method:authorization.method});
-      state.records=[];state.selectedRecordId=null;save();closeCleanupModal();render();showToast('Datos locales respaldados y eliminados correctamente.');
+      const previousRecords=state.records;const previousSelection=state.selectedRecordId;
+      confirmButton.disabled=true;confirmButton.textContent='Eliminando…';
+      try{
+        state.records=[];state.selectedRecordId=null;await save();
+        window.cleanupSecurity?.recordCleanup({recordCount,lastBackup,authorizationWeek:authorization.week,method:authorization.method});
+        closeCleanupModal();render();showToast('Datos locales respaldados y eliminados correctamente.');
+      }catch(error){
+        state.records=previousRecords;state.selectedRecordId=previousSelection;
+        confirmButton.disabled=false;confirmButton.textContent='Eliminar datos respaldados';
+        showToast(error.message||'No se pudo completar la limpieza. Los datos se conservaron.');
+      }
     });
     updateSteps();
   }

@@ -1,7 +1,11 @@
 (() => {
   const VERSION = '0.13.0';
   const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-  const REQUIRED_BASE = ['ID DATA','FECHA','CAMPO','FUNDO','MODULO','TURNO-LOTE','CUADRANTE','VARIEDAD','# PLANTA'];
+  const REQUIRED_BASE = ['ID DATA','FECHA','CAMPO','FUNDO','MODULO','TURNO-LOTE','VARIEDAD','# PLANTA'];
+  const MAX_XLSX_BYTES = 25*1024*1024;
+  const MAX_ZIP_ENTRIES = 200;
+  const MAX_UNCOMPRESSED_BYTES = 80*1024*1024;
+  const MAX_ENTRY_BYTES = 20*1024*1024;
   const META_HEADERS = ['ID DATA','CAMPAÑA','EVALUADOR ID','EVALUADOR'];
   const PARAM_HEADERS = ['ID DATA','FECHA','SEMANA','MES','AÑO','CAMPO','FUNDO','MODULO','TURNO-LOTE','CUADRANTE','VARIEDAD','EVALUADOR','PARAMETRO ID','PARAMETRO','SECCION','TIPO','VALOR','UNIDAD'];
   const xlsxUi = {files:[],preview:null,busy:false};
@@ -94,33 +98,47 @@
   }
   async function unzip(buffer){
     const bytes=buffer instanceof Uint8Array?buffer:new Uint8Array(buffer);
+    if(bytes.length>MAX_XLSX_BYTES) throw new Error('El Excel supera el límite de 25 MB.');
     const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
     let eocd=-1;
-    for(let i=Math.max(0,bytes.length-65557);i<=bytes.length-22;i++){
-      if(view.getUint32(i,true)===0x06054b50) eocd=i;
+    for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65557);i--){
+      if(view.getUint32(i,true)===0x06054b50){eocd=i;break;}
     }
     if(eocd<0) throw new Error('El archivo no parece ser un Excel XLSX válido.');
     const count=view.getUint16(eocd+10,true);
+    if(count>MAX_ZIP_ENTRIES) throw new Error(`El Excel contiene demasiadas entradas ZIP (${count}).`);
     let cursor=view.getUint32(eocd+16,true);
     const files=new Map();
+    let expandedTotal=0;
     for(let n=0;n<count;n++){
+      if(cursor<0||cursor+46>bytes.length) throw new Error('El Excel contiene una tabla ZIP fuera de límites.');
       if(view.getUint32(cursor,true)!==0x02014b50) throw new Error('El archivo XLSX tiene una estructura ZIP no reconocida.');
       const method=view.getUint16(cursor+10,true);
+      const expectedCrc=view.getUint32(cursor+16,true);
       const compressed=view.getUint32(cursor+20,true);
+      const uncompressed=view.getUint32(cursor+24,true);
       const nameLength=view.getUint16(cursor+28,true);
       const extraLength=view.getUint16(cursor+30,true);
       const commentLength=view.getUint16(cursor+32,true);
       const localOffset=view.getUint32(cursor+42,true);
+      if(cursor+46+nameLength+extraLength+commentLength>bytes.length) throw new Error('El Excel contiene una entrada central truncada.');
+      if(uncompressed>MAX_ENTRY_BYTES) throw new Error(`Una entrada del Excel supera ${MAX_ENTRY_BYTES/1024/1024} MB.`);
+      if(compressed&&uncompressed/compressed>200) throw new Error('El Excel tiene una relación de compresión insegura.');
+      expandedTotal+=uncompressed;
+      if(expandedTotal>MAX_UNCOMPRESSED_BYTES) throw new Error('El contenido expandido del Excel supera 80 MB.');
       const name=decodeUtf8(bytes.slice(cursor+46,cursor+46+nameLength));
+      if(localOffset<0||localOffset+30>bytes.length) throw new Error('Entrada XLSX fuera de límites.');
       if(view.getUint32(localOffset,true)!==0x04034b50) throw new Error('Entrada XLSX dañada.');
       const localNameLength=view.getUint16(localOffset+26,true);
       const localExtraLength=view.getUint16(localOffset+28,true);
       const start=localOffset+30+localNameLength+localExtraLength;
+      if(start<0||start+compressed>bytes.length) throw new Error('Entrada XLSX truncada.');
       const raw=bytes.slice(start,start+compressed);
       let data;
       if(method===0) data=raw;
       else if(method===8) data=await inflateRaw(raw);
       else throw new Error(`Método de compresión XLSX no compatible (${method}).`);
+      if(data.length!==uncompressed||crc32(data)!==expectedCrc) throw new Error(`La entrada ${name} no supera la validación de integridad.`);
       files.set(name.replace(/^\//,''),data);
       cursor+=46+nameLength+extraLength+commentLength;
     }
@@ -216,6 +234,7 @@
     return rows;
   }
   async function readWorkbook(file){
+    if(file?.size>MAX_XLSX_BYTES) throw new Error('El Excel supera el límite de 25 MB.');
     const files=await unzip(await file.arrayBuffer());
     const workbook=parseXml(files.get('xl/workbook.xml'),'workbook.xml');
     const rels=parseXml(files.get('xl/_rels/workbook.xml.rels'),'workbook.xml.rels');
@@ -299,7 +318,7 @@
   function validateBase(record){
     const missing=[];
     if(!record.id) missing.push('ID DATA');if(!record.date)missing.push('FECHA');if(!record.field)missing.push('CAMPO');if(!record.farm)missing.push('FUNDO');
-    if(!record.module)missing.push('MODULO');if(!record.lot)missing.push('TURNO-LOTE');if(!record.quadrant)missing.push('CUADRANTE');if(!record.variety)missing.push('VARIEDAD');
+    if(!record.module)missing.push('MODULO');if(!record.lot)missing.push('TURNO-LOTE');if(!record.variety)missing.push('VARIEDAD');
     if(blank(record.plant)||Number(record.plant)<1)missing.push('# PLANTA');
     return missing;
   }
@@ -478,9 +497,9 @@
     const analysis=mergeAnalysis(parsed.records);
     const message=`${fileName}\n\nNuevos: ${analysis.new}\nCompletados: ${analysis.updated}\nRepetidos: ${analysis.duplicate}\nObservados: ${analysis.observed}\n\n¿Importar los registros válidos?`;
     if(!confirm(message))return;
+    const previousRecords=state.records;
     state.records=[...analysis.records.values()];
-    save();
-    await window.FenologiaDB?.flush?.();
+    try{await save();}catch(error){state.records=previousRecords;throw error;}
     showToast(`Excel importado: ${analysis.new} nuevos y ${analysis.updated} completados.`);
     render();
   }
