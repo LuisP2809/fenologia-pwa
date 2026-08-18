@@ -16,11 +16,6 @@
   const safe=value=>String(value??'').trim();
   const now=()=>new Date().toISOString();
 
-  async function hashDni(dni){
-    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`FENOLOGIA|PIN|${String(dni)}`));
-    return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
-  }
-
   function nextUserId(config,role){
     const prefix={Administrador:'ADM',Supervisor:'SUP',Evaluador:'EVA'}[role]||'USR';
     const used=new Set((config.users||[]).map(user=>user.id));
@@ -124,12 +119,16 @@
 
       const permissions=[...form.querySelectorAll('input[name="permissions"]:checked')].map(input=>input.value);
       const finalPermissions=permissions.length?permissions:[...(ROLE_DEFAULTS[values.role]||[])];
-      const pinHash=values.pin?await hashDni(values.pin):safe(user?.pinHash);
+      const credential=values.pin?await window.FenologiaCredentials.create(values.pin):null;
+      const pinHash=credential?.pinHash||safe(user?.pinHash);
       if(!pinHash) throw new Error('Define un DNI de 8 dígitos para el usuario.');
 
       const duplicateName=config.users.find(item=>item.id!==values.id&&safe(item.name).toLowerCase()===values.name.toLowerCase());
       if(duplicateName) throw new Error('Ya existe un usuario con ese nombre.');
-      const duplicateDni=config.users.find(item=>item.id!==values.id&&safe(item.pinHash)===pinHash);
+      let duplicateDni=null;
+      if(values.pin){
+        for(const item of config.users){if(item.id!==values.id&&await window.FenologiaCredentials.verify(values.pin,item)){duplicateDni=item;break;}}
+      }
       if(duplicateDni) throw new Error('Ese DNI ya está asignado a otro usuario.');
 
       if(!user){
@@ -140,7 +139,7 @@
       user.role=values.role;
       user.active=form.querySelector('[name="active"]')?.checked!==false;
       user.permissions=finalPermissions;
-      user.pinHash=pinHash;
+      if(credential)Object.assign(user,credential);
       user.updatedAt=now();
       config.revision=Number(config.revision||0)+1;
       config.updatedAt=now();

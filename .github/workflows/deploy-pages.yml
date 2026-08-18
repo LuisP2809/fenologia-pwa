@@ -1,11 +1,11 @@
-# Publicación habilitada para main y agent/version-inicial-pwa
+# Publicación controlada: producción o ramas de lanzamiento explícitas.
 name: Publicar Fenología en GitHub Pages
 
 on:
   push:
     branches:
       - main
-      - agent/version-inicial-pwa
+      - 'release/**'
   workflow_dispatch:
 
 permissions:
@@ -31,17 +31,10 @@ jobs:
           node-version: '22'
 
       - name: Instalar dependencias
-        run: npm install
+        run: npm ci
 
-      - name: Validar sintaxis Excel y análisis
-        run: |
-          node --check app-xlsx-workflow.js
-          node --check app-xlsx-compat.js
-          node --check app-supervisor-file-analysis.js
-          node --check app-analysis-source-guard.js
-
-      - name: Validar PWA
-        run: npm run verify:pwa
+      - name: Ejecutar validaciones completas
+        run: npm test
 
       - name: Preparar aplicación web
         run: npm run build:web

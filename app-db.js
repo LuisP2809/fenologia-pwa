@@ -11,6 +11,7 @@
     'fenologia-cleanup-history-v1',
     'fenologia-cleanup-code-attempts-v1',
     'fenologia-last-backup',
+    'fenologia-last-backup-manifest-v1',
     'fenologia-export-period-v1'
   ];
 
@@ -20,6 +21,9 @@
   let lastSavedAt = null;
   let pendingSave = Promise.resolve();
   let storagePatched = false;
+  let persistedRecords = new Map();
+  let currentRecordCount = 0;
+  const channel = typeof BroadcastChannel!=='undefined' ? new BroadcastChannel('fenologia-db-v1') : null;
 
   const parseJson = (value, fallback) => {
     try { return value ? JSON.parse(value) : fallback; }
@@ -194,22 +198,41 @@
     const db = await openDatabase();
     const tx = db.transaction(['records','settings'],'readwrite');
     const recordsStore = tx.objectStore('records');
-    recordsStore.clear();
-    (records || []).forEach(record => { if(record?.id) recordsStore.put(record); });
+    const next=new Map((records||[]).filter(record=>record?.id).map(record=>[record.id,record]));
+    for(const [id,record] of next){
+      if(JSON.stringify(persistedRecords.get(id))!==JSON.stringify(record)) recordsStore.put(record);
+    }
+    for(const id of persistedRecords.keys()){
+      if(!next.has(id)) recordsStore.delete(id);
+    }
     tx.objectStore('settings').put({key:'assignments',value:assignments || {},updatedAt:new Date().toISOString()});
     await transactionPromise(tx);
     lastSavedAt = new Date().toISOString();
+    persistedRecords=next;
+    currentRecordCount=next.size;
+    try{
+      localStorage.setItem(LEGACY_RECORDS_KEY,JSON.stringify([...next.values()]));
+      localStorage.setItem(LEGACY_ASSIGNMENTS_KEY,JSON.stringify(assignments||{}));
+    }catch{
+      localStorage.removeItem(LEGACY_RECORDS_KEY);
+      localStorage.removeItem(LEGACY_ASSIGNMENTS_KEY);
+    }
+    channel?.postMessage({type:'saved',lastSavedAt,recordCount:currentRecordCount});
     window.dispatchEvent(new CustomEvent('fenologia-db-status',{detail:{status:'saved',lastSavedAt}}));
   }
 
   function saveAppState(records,assignments){
+    const snapshotRecords=typeof structuredClone==='function'?structuredClone(records||[]):JSON.parse(JSON.stringify(records||[]));
+    const snapshotAssignments=typeof structuredClone==='function'?structuredClone(assignments||{}):JSON.parse(JSON.stringify(assignments||{}));
     if(fallbackMode){
-      localStorage.setItem(LEGACY_RECORDS_KEY,JSON.stringify(records || []));
-      localStorage.setItem(LEGACY_ASSIGNMENTS_KEY,JSON.stringify(assignments || {}));
+      localStorage.setItem(LEGACY_RECORDS_KEY,JSON.stringify(snapshotRecords));
+      localStorage.setItem(LEGACY_ASSIGNMENTS_KEY,JSON.stringify(snapshotAssignments));
+      currentRecordCount=snapshotRecords.length;
       return Promise.resolve();
     }
     window.dispatchEvent(new CustomEvent('fenologia-db-status',{detail:{status:'saving'}}));
-    pendingSave = pendingSave.catch(() => {}).then(() => writeAppState(records,assignments));
+    const write=()=>writeAppState(snapshotRecords,snapshotAssignments);
+    pendingSave = pendingSave.catch(() => {}).then(() => navigator.locks?.request?navigator.locks.request('fenologia-db-write',{mode:'exclusive'},write):write());
     return pendingSave.catch(error => {
       console.error('IndexedDB save failed',error);
       window.dispatchEvent(new CustomEvent('fenologia-db-status',{detail:{status:'error',message:error.message}}));
@@ -228,6 +251,8 @@
       const migration = await migrateLegacyData();
       await reconcileTrackedSettings();
       const bootstrapState = await loadBootstrapState();
+      persistedRecords=new Map(bootstrapState.records.filter(record=>record?.id).map(record=>[record.id,record]));
+      currentRecordCount=persistedRecords.size;
       window.__FENOLOGIA_BOOTSTRAP_STATE__ = bootstrapState;
       window.__FENOLOGIA_MIGRATION_INFO__ = migration;
       ready = true;
@@ -241,6 +266,7 @@
         records:parseJson(localStorage.getItem(LEGACY_RECORDS_KEY),[]),
         assignments:parseJson(localStorage.getItem(LEGACY_ASSIGNMENTS_KEY),{})
       };
+      currentRecordCount=window.__FENOLOGIA_BOOTSTRAP_STATE__.records.length;
       window.__FENOLOGIA_DB_ERROR__ = error.message;
       return {ok:false,error:error.message,recordCount:window.__FENOLOGIA_BOOTSTRAP_STATE__.records.length};
     }
@@ -255,12 +281,15 @@
       version:DB_VERSION,
       lastSavedAt,
       migration,
-      recordCount:window.__FENOLOGIA_BOOTSTRAP_STATE__?.records?.length || 0
+      recordCount:currentRecordCount
     };
   }
 
   window.addEventListener('pagehide',() => { flush(); });
   document.addEventListener('visibilitychange',() => { if(document.visibilityState === 'hidden') flush(); });
+  channel?.addEventListener('message',event=>{
+    if(event.data?.type==='saved') window.dispatchEvent(new CustomEvent('fenologia-db-external-change',{detail:event.data}));
+  });
 
   window.FenologiaDB = {
     prepare,
