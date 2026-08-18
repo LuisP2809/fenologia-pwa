@@ -1,5 +1,5 @@
-const CACHE='fenologia-v0.13.14-map-stable';
-const VERSION='0.13.14';
+const CACHE='fenologia-v0.13.15-map-stable';
+const VERSION='0.13.15';
 const versioned=path=>`${path}?v=${VERSION}`;
 const ASSETS=[
   './','./index.html',versioned('./manifest.webmanifest'),
@@ -21,10 +21,7 @@ const ASSETS=[
 ];
 
 self.addEventListener('install',event=>{
-  event.waitUntil(caches.open(CACHE).then(async cache=>{
-    const results=await Promise.allSettled(ASSETS.map(asset=>cache.add(asset)));
-    results.forEach((result,index)=>{if(result.status==='rejected')console.warn('No se pudo guardar offline:',ASSETS[index],result.reason);});
-  }));
+  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)));
 });
 self.addEventListener('message',event=>{if(event.data?.type==='SKIP_WAITING')self.skipWaiting();});
 self.addEventListener('activate',event=>{

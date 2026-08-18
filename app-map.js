@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.13.14', MAP_PATH='data/lotes-mapa.geojson', W=1200, H=760, PAD=32;
+  const VERSION='0.13.15', MAP_PATH='data/lotes-mapa.geojson', W=1200, H=760, PAD=32;
   const iso=(d=new Date())=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
   const m={data:null,loading:null,error:'',from:iso(),to:iso(),field:'',farm:'',module:'',variety:'',evaluator:'',lot:'',zoom:1,x:0,y:0,drag:null};
   const roles=()=>['Evaluador','Supervisor','Administrador'].includes(state.session?.role);
@@ -10,20 +10,11 @@
   const allLots=()=>new Set(active().map(f=>f.properties.LOTE));
   const opt=(values,current,all='Todos')=>`<option value="">${all}</option>${values.map(v=>`<option value="${esc(v)}" ${v===current?'selected':''}>${esc(v)}</option>`).join('')}`;
 
-  async function unpack(payload){
-    if(payload?.encoding!=='gzip-base64') return payload;
-    if(typeof DecompressionStream!=='function') throw Error('El navegador necesita una versión reciente de Chrome para abrir el mapa.');
-    const bin=atob(payload.data||''), bytes=new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-    const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-    return JSON.parse(await new Response(stream).text());
-  }
-
-  function catalogLots(){
-    const lots=new Set();
-    Object.values(state.catalog?.lotesAgrupados||{}).forEach(farms=>{
-      Object.values(farms||{}).forEach(modules=>{
-        Object.values(modules||{}).forEach(items=>(items||[]).forEach(lot=>lots.add(String(lot).trim())));
+  function catalogMetadata(){
+    const lots=new Map();
+    Object.entries(state.catalog?.lotesAgrupados||{}).forEach(([field,farms])=>{
+      Object.entries(farms||{}).forEach(([farm,modules])=>{
+        Object.entries(modules||{}).forEach(([module,items])=>(items||[]).forEach(lot=>lots.set(String(lot).trim(),{CAMPO:field,FUNDO:farm,MODULO:module})));
       });
     });
     return lots;
@@ -31,20 +22,24 @@
 
   function validateGeoJSON(data){
     if(data?.type!=='FeatureCollection'||!Array.isArray(data.features))throw Error('El archivo cargado no contiene una colección GeoJSON válida.');
-    const expected=catalogLots(),seen=new Set(),invalid=[];
+    const expected=catalogMetadata(),seen=new Set(),invalid=[];
     const polygons=geometry=>geometry?.type==='Polygon'?[geometry.coordinates]:geometry?.type==='MultiPolygon'?geometry.coordinates:null;
     data.features.forEach((feature,index)=>{
       const lot=String(feature?.properties?.LOTE||'').trim(),parts=polygons(feature?.geometry);
       if(!lot||seen.has(lot)||!parts){invalid.push(lot||`geometría ${index+1}`);return;}
       seen.add(lot);
+      const metadata=expected.get(lot);
+      if(!metadata||['CAMPO','FUNDO','MODULO'].some(property=>String(feature.properties?.[property]||'').trim()!==String(metadata[property]||'').trim()))invalid.push(lot);
       for(const polygon of parts){
         for(const ring of polygon||[]){
           const first=ring?.[0],last=ring?.[ring.length-1];
-          if(!Array.isArray(ring)||ring.length<4||!first||!last||first[0]!==last[0]||first[1]!==last[1]||ring.some(point=>!Array.isArray(point)||point.length<2||!Number.isFinite(point[0])||!Number.isFinite(point[1])))invalid.push(lot);
+          const badPoint=ring?.some(point=>!Array.isArray(point)||point.length<2||!Number.isFinite(point[0])||!Number.isFinite(point[1])||point[0]<-180||point[0]>180||point[1]<-90||point[1]>90);
+          const area=Array.isArray(ring)&&!badPoint?Math.abs(ring.reduce((sum,[x1,y1],position)=>{const [x2,y2]=ring[(position+1)%ring.length];return sum+(x1*y2-x2*y1);},0)/2):0;
+          if(!Array.isArray(ring)||ring.length<4||!first||!last||first[0]!==last[0]||first[1]!==last[1]||badPoint||area===0)invalid.push(lot);
         }
       }
     });
-    const missing=[...expected].filter(lot=>!seen.has(lot)),unknown=[...seen].filter(lot=>!expected.has(lot));
+    const missing=[...expected.keys()].filter(lot=>!seen.has(lot)),unknown=[...seen].filter(lot=>!expected.has(lot));
     if(invalid.length||missing.length||unknown.length){
       const detail=[invalid.length&&`geometrías inválidas: ${uniq(invalid).slice(0,8).join(', ')}`,missing.length&&`sin polígono: ${missing.slice(0,8).join(', ')}`,unknown.length&&`fuera del catálogo: ${unknown.slice(0,8).join(', ')}`].filter(Boolean).join('; ');
       throw Error(`El GeoJSON no coincide con el catálogo (${detail}).`);
@@ -72,11 +67,7 @@
   }
 
   async function loadFromNetwork(){
-    const urls=[
-      new URL(MAP_PATH,location.href).href,
-      new URL(`${MAP_PATH}?v=${VERSION}`,location.href).href,
-      new URL(`${MAP_PATH}?v=0.8.0`,location.href).href
-    ];
+    const urls=[new URL(`${MAP_PATH}?v=${VERSION}`,location.href).href];
     let lastError=null;
     for(const url of [...new Set(urls)]){
       try{return await fetchWithTimeout(url);}catch(error){lastError=error;}
@@ -120,7 +111,7 @@
         throw Error(`${reason} Verifica que la terminal continúe ejecutando el servidor y vuelve a abrir el puerto.`);
       }
       if(!state.catalog?.lotesAgrupados&&window.__FENOLOGIA_CATALOG_READY__)await window.__FENOLOGIA_CATALOG_READY__;
-      const data=validateGeoJSON(await unpack(payload));
+      const data=validateGeoJSON(payload);
       m.data=data;m.error='';return data;
     })().catch(error=>{m.error=error.message||'No se pudo cargar el mapa.';throw error;}).finally(()=>m.loading=null);
     return m.loading;

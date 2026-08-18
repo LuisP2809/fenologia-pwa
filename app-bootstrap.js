@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.13.14';
+  const APP_VERSION = '0.13.15';
   const scripts = [
     'app-core.js','app-eval.js','app-admin.js','app-security.js','app-workflow-patches.js','app-export-filters.js','app-db-ui.js','app-supervisor.js','app-supervisor-role.js','app-supervisor-unified.js','app-map.js','app-charts.js','app-admin-complete.js','app-admin-dni-fix.js','app-user-access-package.js','app-admin-role-cleanup.js','app-dynamic-parameters.js','app-dynamic-supervisor.js','app-stage-analytics.js','app-stage-analytics-ui.js','app-charts-refinement.js','app-platform.js','app-xlsx-workflow.js','app-xlsx-compat.js','app-supervisor-file-analysis.js','app-analysis-source-guard.js','app-evaluator-navigation.js','app-evaluation-flow.js','app-release.js'
   ];
