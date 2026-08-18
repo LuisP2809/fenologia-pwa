@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Fenología">
+  <rect width="512" height="512" fill="#07552F"/>
+  <circle cx="256" cy="256" r="184" fill="#0B7442"/>
+  <path d="M361 125c-99 4-177 39-204 111-23 63 10 116 67 129 67 15 130-30 149-100 14-54 4-101-12-140Z" fill="#CDE9A5"/>
+  <path d="M171 348c47-72 100-124 176-183" fill="none" stroke="#07552F" stroke-width="22" stroke-linecap="round"/>
+  <path d="M247 273c-21-9-43-11-66-6M289 230c2-23 9-45 22-66M215 313c-17-2-33 0-48 7M326 194c3-14 8-27 17-38" fill="none" stroke="#07552F" stroke-width="13" stroke-linecap="round"/>
+  <circle cx="365" cy="354" r="43" fill="#F4B942"/>
+  <path d="m346 354 13 13 26-30" fill="none" stroke="#173A24" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

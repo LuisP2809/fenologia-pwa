@@ -1,0 +1,84 @@
+/* Encabezado compacto para celular: mantiene visibles conexión, usuario y salida. */
+@media (max-width:760px){
+  .topbar{
+    min-height:72px;
+    height:auto;
+    padding:10px 12px;
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr) auto auto auto;
+    align-items:center;
+    gap:7px;
+  }
+  .menu-icon{
+    width:38px;
+    height:38px;
+    border-radius:11px;
+    font-size:19px;
+  }
+  .brand{
+    margin-left:0;
+    min-width:0;
+  }
+  .brand b{
+    font-size:13px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .brand span{display:none}
+  .connection{
+    display:flex;
+    margin:0;
+    padding:6px 8px;
+    gap:5px;
+    font-size:10px;
+    white-space:nowrap;
+  }
+  .connection i{
+    width:7px;
+    height:7px;
+    flex:0 0 auto;
+  }
+  .user-chip{
+    display:flex;
+    margin:0;
+    gap:0;
+  }
+  .user-chip>span{
+    width:34px;
+    height:34px;
+    border-radius:10px;
+    font-size:13px;
+  }
+  .user-chip div{display:none}
+  .topbar .ghost{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:44px;
+    padding:9px 10px;
+    border-radius:10px;
+    font-size:11px;
+  }
+  .workspace{min-height:calc(100vh - 72px)}
+}
+
+@media (max-width:400px){
+  .topbar{
+    grid-template-columns:auto minmax(64px,1fr) auto auto auto;
+    gap:5px;
+    padding-inline:8px;
+  }
+  .brand b{font-size:11px;letter-spacing:.06em}
+  .connection{padding:6px;font-size:9px}
+  .topbar .ghost{min-width:40px;padding:9px 7px;font-size:10px}
+  .user-chip>span{width:32px;height:32px}
+}
+
+@media (max-width:350px){
+  .brand b{font-size:0}
+  .brand b::after{content:'FENO';font-size:10px;letter-spacing:.05em}
+  .connection{font-size:0}
+  .connection::after{content:'Online';font-size:9px}
+  .connection:has(.offline)::after{content:'Offline'}
+}

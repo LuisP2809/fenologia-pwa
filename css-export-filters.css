@@ -1,0 +1,19 @@
+.export-period-panel{display:grid;gap:18px;border-color:#cfe0d4;background:linear-gradient(135deg,#fbfefc,#f2f9f4)}
+.export-period-heading{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start}
+.export-period-icon{width:52px;height:52px;display:grid;place-items:center;border-radius:15px;background:#dff1e4;font-size:25px}
+.export-period-heading span{font-size:10px;letter-spacing:.12em;font-weight:900;color:var(--g700)}
+.export-period-heading h2{margin:5px 0}
+.export-period-heading p{margin:0;color:var(--muted);font-size:12px}
+.export-period-controls{display:grid;grid-template-columns:minmax(220px,320px) 1fr;gap:14px;align-items:end}
+.export-custom-range{display:grid;grid-template-columns:repeat(2,minmax(170px,1fr));gap:12px}
+.export-custom-range[hidden]{display:none}
+.export-period-summary{display:grid;grid-template-columns:minmax(260px,1.8fr) repeat(3,minmax(100px,.55fr));gap:10px;padding-top:14px;border-top:1px solid var(--line)}
+.export-period-summary>div{min-height:74px;padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:#fff;display:grid;align-content:center}
+.export-period-summary strong{font-size:23px;color:var(--g900)}
+.export-period-summary span{font-size:11px;color:var(--muted)}
+.export-period-description b{font-size:15px;margin:3px 0;color:var(--g900)}
+.export-period-description small{font-size:11px;color:#417051}
+.export-period-description small.error{color:#b14a43}
+.export-card:disabled{opacity:.46;cursor:not-allowed;filter:grayscale(.25);transform:none!important}
+@media(max-width:900px){.export-period-controls{grid-template-columns:1fr}.export-period-summary{grid-template-columns:repeat(3,1fr)}.export-period-description{grid-column:1/-1}}
+@media(max-width:600px){.export-period-heading{grid-template-columns:1fr}.export-custom-range{grid-template-columns:1fr}.export-period-summary{grid-template-columns:1fr}.export-period-description{grid-column:auto}}
