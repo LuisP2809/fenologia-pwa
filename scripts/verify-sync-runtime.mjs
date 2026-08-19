@@ -6,6 +6,7 @@ const assert=(condition,message)=>{if(!condition)throw new Error(message);};
 const settings=new Map();
 const stores={syncQueue:new Map(),syncReceipts:new Map(),syncAlerts:new Map(),syncArchive:new Map()};
 const events=[];
+const downloads=[];
 const app={innerHTML:''};
 const document={
   visibilityState:'visible',head:{appendChild(){}},
@@ -39,7 +40,7 @@ const context={
   isEvaluator:()=>state.session?.role==='Evaluador',
   isSupervisor:()=>['Supervisor','Administrador'].includes(state.session?.role),
   isAdmin:()=>state.session?.role==='Administrador',
-  showToast(){},downloadFile:async()=>({ok:true})
+  showToast(){},downloadFile:async(name,content,type)=>{downloads.push({name,content,type});return {ok:true};}
 };
 windowObject.FenologiaDB={
   async getSetting(key){return settings.has(key)?structuredClone(settings.get(key)):null;},
@@ -53,6 +54,17 @@ vm.createContext(context);
 vm.runInContext(await readFile('app-sync-core.js','utf8'),context,{filename:'app-sync-core.js'});
 vm.runInContext(await readFile('app-sync.js','utf8'),context,{filename:'app-sync.js'});
 await windowObject.FenologiaSync.ready;
+const preparedProfile=await windowObject.FenologiaSync.createProfile({
+  endpoint:'https://script.google.com/macros/s/PRUEBA/exec',evaluatorId:'EVA-001',evaluator:'Evaluador 1',role:'Evaluador',deviceToken:'123456789012345678901234'
+});
+assert(preparedProfile.version==='0.15.1'&&preparedProfile.evaluatorId==='EVA-001','El asistente no generó el perfil con el usuario autocompletado.');
+assert(downloads.at(-1)?.name==='Perfil-Sync-EVA-001.json','El asistente no descargó el nombre de perfil esperado.');
+const legacyProfile={...preparedProfile,version:'0.15.0'};
+await windowObject.FenologiaSync.installProfile({size:JSON.stringify(legacyProfile).length,text:async()=>JSON.stringify(legacyProfile)});
+assert(windowObject.FenologiaSync.getConfig().deviceToken===legacyProfile.deviceToken,'Un perfil 0.15.0 compatible no pudo instalarse.');
+let wrongOwnerRejected=false;
+try{await windowObject.FenologiaSync.installProfile({size:100,text:async()=>JSON.stringify({...legacyProfile,evaluatorId:'EVA-999'})});}catch{wrongOwnerRejected=true;}
+assert(wrongOwnerRejected,'El dispositivo aceptó un perfil perteneciente a otro usuario.');
 await windowObject.FenologiaSync.saveConfig({enabled:true,transport:'mock',cleanupEnabled:false,retentionWeeks:1});
 
 const record={
@@ -99,7 +111,8 @@ await events.find(event=>event.type==='fenologia-db-external-change'&&event.list
 assert(windowObject.FenologiaSync.state.remoteRecords.length===1,'El caché offline no restauró la semana activa del Supervisor.');
 
 state.session={id:'ADM-001',name:'Administrador 1',role:'Administrador'};state.view='sync-control';context.render();
-assert(app.innerHTML.includes('sync-config-form')&&app.innerHTML.includes('sync-profile-form'),'El Administrador no dispone de conexión y perfiles individuales.');
+assert(app.innerHTML.includes('sync-config-form')&&app.innerHTML.includes('Preparar dispositivo'),'El Administrador no dispone de conexión y del asistente por usuario.');
+assert(!app.innerHTML.includes('id="sync-profile-form"'),'La configuración todavía duplica el formulario manual de perfiles.');
 assert(app.innerHTML.includes('cola pendiente, conflictos y registros sin recibo nunca se eliminan'),'El panel no explica la protección de limpieza.');
 assert(saveCount>0,'Los cambios de estado no se persistieron localmente.');
 

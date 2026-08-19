@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.15.0';
+  const VERSION='0.15.1';
   const CLEANUP_ADMIN_KEY='fenologia-cleanup-admin-profiles-v1';
   const CONFIG_KEY='admin-config-v1';
   const CACHE_KEY='fenologia-admin-config-cache-v1';
@@ -89,6 +89,38 @@
     showToast(cleanupProfile
       ? `Acceso de ${target.name} descargado; incluye autorización de limpieza.`
       : `Acceso de ${target.name} descargado.`);
+    return result;
+  }
+
+  function devicePreparationModal(target){
+    const syncConfig=window.FenologiaSync?.getConfig?.()||{};
+    const endpoint=safe(syncConfig.endpoint);
+    return `<div class="admin-modal-backdrop" id="admin-modal"><section class="admin-modal device-preparation-modal">
+      <div class="admin-modal-head"><div><span>PREPARAR DISPOSITIVO</span><h2>${esc(target.name)}</h2></div><button type="button" data-close-admin-modal>×</button></div>
+      <div class="device-preparation-identity"><b>${esc(target.id)}</b><span>${esc(target.role)}</span><small>Activo · nombre, ID y rol bloqueados para evitar cruces</small></div>
+      <section class="device-preparation-step required-step">
+        <div class="device-step-number">1</div><div><span>ACCESO LOCAL · OBLIGATORIO</span><h3>Permitir el ingreso con nombre y DNI</h3><p>Este es el archivo que se importa en la pantalla de bienvenida del celular. No contiene el token de Drive.</p><code>ACCESO_FENOLOGIA_${esc(target.id)}_AAAAMMDD.json</code></div>
+        <button type="button" class="primary" data-prepare-access="${esc(target.id)}">Descargar acceso</button>
+      </section>
+      <form id="prepare-device-sync-form" class="device-preparation-step sync-step">
+        <input type="hidden" name="evaluatorId" value="${esc(target.id)}"><input type="hidden" name="evaluator" value="${esc(target.name)}"><input type="hidden" name="role" value="${esc(target.role)}">
+        <div class="device-step-number">2</div><div><span>SINCRONIZACIÓN DRIVE · DESPUÉS DE INGRESAR</span><h3>Conectar este usuario con la base central</h3><p>Usa exactamente el token registrado en Apps Script para <b>${esc(target.id)}</b>.</p>
+          <div class="device-preparation-fields"><label>URL del servicio<input name="endpoint" type="url" value="${esc(endpoint)}" placeholder="https://script.google.com/macros/s/.../exec" required></label><label>Token individual de Apps Script<input name="deviceToken" type="password" minlength="24" autocomplete="new-password" required></label></div>
+          <code>Perfil-Sync-${esc(target.id)}.json</code><small class="device-preparation-help">Se instala desde “Sincronización” después de iniciar sesión. Nunca se importa en la bienvenida.</small>
+        </div><button type="submit" class="secondary">Descargar Perfil-Sync</button>
+      </form>
+      <div class="device-preparation-result" id="device-preparation-result" role="status">Primero entrega el acceso local. El perfil de Drive puede prepararse después, cuando Apps Script esté desplegado.</div>
+    </section></div>`;
+  }
+
+  function openDevicePreparation(userId){
+    if(state?.session?.role!=='Administrador')return showToast('Solo el Administrador puede preparar dispositivos.');
+    const config=window.FenologiaAdmin?.config?.();
+    const target=config?.users?.find(user=>user.id===userId&&user.active!==false);
+    if(!target)return showToast('El usuario no existe o está inactivo.');
+    const host=document.querySelector('#admin-modal-host');
+    if(!host)return showToast('Abre “Usuarios y roles” para preparar el dispositivo.');
+    host.innerHTML=devicePreparationModal(target);
   }
 
   async function alignEvaluatorPermissions(){
@@ -147,7 +179,8 @@
   function decorateUsers(){
     if(state?.session?.role!=='Administrador'||state.view!=='users') return;
     document.querySelectorAll('.admin-user-card').forEach(card=>{
-      if(card.querySelector('[data-download-user-access]')) return;
+      if(card.querySelector('[data-prepare-user-device]')) return;
+      card.querySelector('[data-download-user-access]')?.remove();
       const text=card.querySelector('.admin-user-main small')?.textContent||'';
       const match=text.match(/\b(?:EVA|SUP|ADM)-\d+\b/);
       const userId=match?.[0];
@@ -156,10 +189,10 @@
       if(!actions) return;
       const button=document.createElement('button');
       button.type='button';
-      button.className='secondary';
-      button.dataset.downloadUserAccess=userId;
-      button.textContent='Descargar acceso';
-      button.title=userId.startsWith('ADM-')?'Generar acceso administrativo para otro dispositivo.':'Generar archivo de acceso para este usuario.';
+      button.className='primary';
+      button.dataset.prepareUserDevice=userId;
+      button.textContent='Preparar dispositivo';
+      button.title='Generar el acceso local y, cuando corresponda, el perfil individual de Drive.';
       actions.prepend(button);
     });
   }
@@ -170,7 +203,11 @@
     decorateUsers();
   }
 
-  document.addEventListener('click',event=>{
+  document.addEventListener('click',async event=>{
+    const prepareButton=event.target.closest?.('[data-prepare-user-device]');
+    if(prepareButton){event.preventDefault();event.stopImmediatePropagation();openDevicePreparation(prepareButton.dataset.prepareUserDevice);return;}
+    const accessButton=event.target.closest?.('[data-prepare-access]');
+    if(accessButton){event.preventDefault();event.stopImmediatePropagation();await downloadAccess(accessButton.dataset.prepareAccess);const result=document.querySelector('#device-preparation-result');if(result)result.textContent='Acceso local descargado. En el celular del destinatario usa “Importar acceso” antes de iniciar sesión.';return;}
     const securityButton=event.target.closest?.('[data-download-cleanup-profile]');
     if(securityButton){
       event.preventDefault();
@@ -186,6 +223,20 @@
     }
   },true);
 
+  document.addEventListener('submit',async event=>{
+    if(event.target.id!=='prepare-device-sync-form')return;
+    event.preventDefault();event.stopImmediatePropagation();
+    try{
+      const values=Object.fromEntries(new FormData(event.target));
+      if(!window.FenologiaSync?.createProfile)throw new Error('El módulo de sincronización todavía no está disponible.');
+      const profile=await window.FenologiaSync.createProfile(values);
+      event.target.deviceToken.value='';
+      const result=document.querySelector('#device-preparation-result');
+      if(result)result.textContent=`Perfil ${profile.evaluatorId} descargado. Instálalo únicamente después de ingresar como ${profile.evaluator}.`;
+      showToast(`Perfil individual preparado para ${profile.evaluatorId}.`);
+    }catch(error){showToast(error.message||'No se pudo preparar el perfil individual.');}
+  },true);
+
   const observer=new MutationObserver(mutations=>{
     if(!mutations.some(mutation=>mutation.addedNodes.length)) return;
     decorate();
@@ -198,5 +249,5 @@
 
   setTimeout(()=>alignEvaluatorPermissions().finally(decorate),0);
   decorate();
-  window.FenologiaUserAccess={version:VERSION,downloadAccess};
+  window.FenologiaUserAccess={version:VERSION,downloadAccess,openDevicePreparation};
 })();

@@ -1,5 +1,6 @@
 (() => {
-  const VERSION='0.15.0';
+  const VERSION='0.15.1';
+  const COMPATIBLE_PROFILE_VERSIONS=new Set(['0.15.0','0.15.1']);
   const CONFIG_KEY='fenologia-sync-config-v1';
   const DEVICE_ID_KEY='fenologia-sync-device-id-v1';
   const ACTIVE_SNAPSHOT_KEY='__ACTIVE_REMOTE_SNAPSHOT__';
@@ -89,7 +90,7 @@
     if(!file)throw new Error('Selecciona un perfil de sincronización.');
     if(file.size>64*1024)throw new Error('El perfil supera el tamaño permitido.');
     const profile=JSON.parse(await file.text());
-    if(profile?.type!=='fenologia-sync-profile'||profile?.version!==VERSION)throw new Error('El archivo no es un perfil compatible con Fenología 0.15.0.');
+    if(profile?.type!=='fenologia-sync-profile'||!COMPATIBLE_PROFILE_VERSIONS.has(profile?.version))throw new Error('El archivo no es un perfil de sincronización compatible.');
     if(cleanText(profile.evaluatorId).toUpperCase()!==cleanText(state.session?.id).toUpperCase())throw new Error('El perfil pertenece a otro usuario.');
     await persistConfig({
       ...config,enabled:true,transport:'apps-script',endpoint:profile.endpoint,deviceToken:profile.deviceToken,
@@ -98,8 +99,7 @@
     return profile;
   }
 
-  async function createProfile(form){
-    const values=Object.fromEntries(new FormData(form));
+  async function downloadProfile(values){
     const profile={
       type:'fenologia-sync-profile',version:VERSION,createdAt:now(),endpoint:cleanText(values.endpoint),
       evaluatorId:cleanText(values.evaluatorId).toUpperCase(),evaluator:cleanText(values.evaluator),role:cleanText(values.role),
@@ -111,8 +111,13 @@
     try{endpoint=new URL(profile.endpoint);}catch{throw new Error('La URL de Apps Script no es válida.');}
     if(endpoint.protocol!=='https:'||endpoint.hostname!=='script.google.com'||!endpoint.pathname.endsWith('/exec'))throw new Error('Usa una URL de Apps Script terminada en /exec.');
     if(profile.deviceToken.length<24)throw new Error('El token generado en Apps Script está incompleto.');
-    await downloadFile(`Perfil-Sync-${profile.evaluatorId}.json`,JSON.stringify(profile,null,2),'application/json');
+    const result=await downloadFile(`Perfil-Sync-${profile.evaluatorId}.json`,JSON.stringify(profile,null,2),'application/json');
+    if(!result?.ok)throw new Error('La descarga del perfil fue cancelada.');
     return profile;
+  }
+
+  async function createProfile(form){
+    return downloadProfile(Object.fromEntries(new FormData(form)));
   }
 
   function openAlerts(){
@@ -446,7 +451,7 @@
           <label>Estado<select name="enabled"><option value="false" ${!config.enabled?'selected':''}>Desactivado</option><option value="true" ${config.enabled?'selected':''}>Activado</option></select></label>
           <label>Transporte<select name="transport"><option value="apps-script" ${config.transport==='apps-script'?'selected':''}>Google Apps Script</option><option value="cors" ${config.transport==='cors'?'selected':''}>API con CORS</option>${developmentMode?`<option value="mock" ${config.transport==='mock'?'selected':''}>Simulador local</option>`:''}</select></label>
           <label class="wide-field">URL del servicio<input name="endpoint" type="url" value="${esc(config.endpoint)}" placeholder="https://script.google.com/macros/s/.../exec"></label>
-          <label class="wide-field">Token del dispositivo<input name="deviceToken" type="password" value="${esc(config.deviceToken)}" autocomplete="off"></label>
+          <label class="wide-field">Token de este dispositivo Administrador<input name="deviceToken" type="password" value="${esc(config.deviceToken)}" autocomplete="off"></label>
           <label>Semanas en el celular<input name="retentionWeeks" type="number" min="1" max="12" value="${config.retentionWeeks}"></label>
           <label>Actualización del Supervisor<input name="refreshSeconds" type="number" min="15" max="300" value="${config.refreshSeconds}"></label>
           <label>Aviso local pendiente (horas)<input name="pendingAlertHours" type="number" min="1" max="72" value="${config.pendingAlertHours}"></label>
@@ -454,16 +459,7 @@
           <label class="sync-check"><input name="cleanupEnabled" type="checkbox" ${config.cleanupEnabled?'checked':''}><span>Limpiar automáticamente solo registros confirmados y fuera del periodo local</span></label>
         </div><div class="form-actions"><button class="primary" type="submit">Guardar configuración local</button><button class="secondary" type="button" id="test-sync-connection">Probar conexión</button></div>
       </form>
-      <form class="panel sync-config-form" id="sync-profile-form">
-        <div class="panel-head"><div><span>PERFIL INDIVIDUAL</span><h2>Preparar archivo para un dispositivo</h2><p>Pega el token creado en Apps Script. El archivo debe entregarse únicamente a su destinatario y eliminarse después de instalarlo.</p></div></div>
-        <div class="form-grid">
-          <label class="wide-field">URL del servicio<input name="endpoint" type="url" value="${esc(config.endpoint)}" required></label>
-          <label>ID del usuario<input name="evaluatorId" required placeholder="EVA-01"></label>
-          <label>Nombre<input name="evaluator" required></label>
-          <label>Rol<select name="role"><option>Evaluador</option><option>Supervisor</option><option>Administrador</option></select></label>
-          <label>Token de Apps Script<input name="deviceToken" type="password" minlength="24" autocomplete="new-password" required></label>
-        </div><div class="form-actions"><button class="secondary" type="submit">Descargar perfil individual</button></div>
-      </form>
+      <section class="panel sync-protection"><div><span>PREPARACIÓN POR USUARIO</span><h2>Acceso y sincronización en un solo asistente</h2><p>Abre “Usuarios y roles” y utiliza <b>Preparar dispositivo</b>. El ID, nombre y rol se completan automáticamente para evitar perfiles cruzados.</p><div class="form-actions"><button class="secondary" type="button" data-view="users">Abrir Usuarios y roles</button></div></div></section>
       <section class="panel sync-protection"><b>Protección obligatoria</b><p>No existe permiso de limpieza para Evaluadores. La cola pendiente, conflictos y registros sin recibo nunca se eliminan.</p></section>`);
   }
 
@@ -618,5 +614,5 @@
     window.dispatchEvent(new CustomEvent('fenologia-sync-ready',{detail:status()}));
   }
 
-  window.FenologiaSync={VERSION,initialize,ready:initialize(),status,getConfig:()=>({...config}),saveConfig:persistConfig,enqueueRecord,processQueue,refreshRemote,runAutomaticCleanup,resolveRemoteAlert,getChartRecords:()=>core().deduplicateRecords([isEvaluator()?state.records:syncState.remoteRecords]),state:syncState};
+  window.FenologiaSync={VERSION,initialize,ready:initialize(),status,getConfig:()=>({...config}),saveConfig:persistConfig,createProfile:downloadProfile,installProfile,enqueueRecord,processQueue,refreshRemote,runAutomaticCleanup,resolveRemoteAlert,getChartRecords:()=>core().deduplicateRecords([isEvaluator()?state.records:syncState.remoteRecords]),state:syncState};
 })();

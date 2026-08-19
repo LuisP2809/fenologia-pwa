@@ -1,5 +1,5 @@
-const CACHE='fenologia-v0.15.0-drive-sync';
-const VERSION='0.15.0';
+const CACHE='fenologia-v0.15.1-device-setup';
+const VERSION='0.15.1';
 const versioned=path=>`${path}?v=${VERSION}`;
 const ASSETS=[
   './','./index.html',versioned('./manifest.webmanifest'),

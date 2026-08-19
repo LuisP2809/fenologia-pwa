@@ -1,6 +1,6 @@
 # Fenología — PWA y APK
 
-## PWA 0.15.0
+## PWA 0.15.1
 
 Antes de publicar:
 

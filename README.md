@@ -1,4 +1,4 @@
-# Fenología PWA · 0.15.0 (candidata local)
+# Fenología PWA · 0.15.1 (candidata local)
 
 Aplicación *offline-first* para capturar, respaldar, consolidar y analizar evaluaciones fenológicas y biométricas desde los roles Evaluador, Supervisor y Administrador.
 
@@ -29,4 +29,4 @@ npm run build:web
 
 El resultado web se genera en `www/`. Las cuentas locales de desarrollo y el simulador central solo se habilitan en `localhost`, `127.0.0.1` o Codespaces; una instalación real necesita un paquete administrativo firmado y un perfil individual de sincronización.
 
-El backend instalable, pero todavía no desplegado, está en `apps-script/`. Consulta [PWA_Y_APK.md](PWA_Y_APK.md), [SECURITY_MODEL.md](SECURITY_MODEL.md) y [CHANGELOG_0.15.0.md](CHANGELOG_0.15.0.md).
+El backend instalable, pero todavía no desplegado, está en `apps-script/`. Consulta [PWA_Y_APK.md](PWA_Y_APK.md), [SECURITY_MODEL.md](SECURITY_MODEL.md) y [CHANGELOG_0.15.1.md](CHANGELOG_0.15.1.md).

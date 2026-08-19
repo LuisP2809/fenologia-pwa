@@ -68,6 +68,24 @@
 .record-sync-panel p{margin:0;color:#607269}
 .sync-file-link{display:inline-flex;text-decoration:none}
 .sync-drive{border-left:4px solid #2b72b8;background:#f2f8ff}
+.device-preparation-modal{width:min(820px,100%)}
+.device-preparation-identity{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 18px;padding:12px 14px;border:1px solid #cfe3d5;border-radius:14px;background:#f3faf5}
+.device-preparation-identity b{font-size:1.08rem;color:#07552f}
+.device-preparation-identity span{padding:5px 9px;border-radius:999px;background:#dff2e5;color:#07552f;font-weight:900}
+.device-preparation-identity small{color:#617269}
+.device-preparation-step{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:14px;align-items:start;padding:18px 0;border-top:1px solid #dce8e0}
+.device-preparation-step>div:nth-child(2){display:grid;gap:5px}
+.device-preparation-step span{font-size:.7rem;letter-spacing:.09em;font-weight:900;color:#087c3d}
+.device-preparation-step h3{margin:0;color:#173a29}
+.device-preparation-step p{margin:0 0 5px;color:#607168}
+.device-preparation-step code{overflow-wrap:anywhere;color:#294e3a}
+.device-step-number{display:grid!important;place-items:center;width:38px;height:38px;border-radius:12px;background:#07552f;color:#fff;font-weight:900}
+.device-preparation-step>button{align-self:center;white-space:nowrap}
+.device-preparation-fields{display:grid;grid-template-columns:1.2fr 1fr;gap:10px;margin:8px 0}
+.device-preparation-fields label{display:grid;gap:6px;font-weight:800;color:#173a29}
+.device-preparation-fields input{width:100%;border:1px solid #bed6c6;border-radius:11px;padding:11px;background:#fff;font:inherit;color:#173a29}
+.device-preparation-help{display:block;color:#6a786f}
+.device-preparation-result{margin-top:5px;padding:12px 14px;border-radius:12px;background:#fff8e7;color:#68501b;font-weight:700}
 
 @media (max-width:720px){
   .sync-home-strip{align-items:flex-start;flex-direction:column}
@@ -75,4 +93,7 @@
   .sync-alert-list article{align-items:flex-start;flex-direction:column}
   .sync-alert-list button{width:100%}
   .sync-config-form .form-actions button{width:100%}
+  .device-preparation-step{grid-template-columns:38px 1fr}
+  .device-preparation-step>button{grid-column:1/-1;width:100%}
+  .device-preparation-fields{grid-template-columns:1fr}
 }

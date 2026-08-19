@@ -5,11 +5,11 @@ const root=process.cwd();
 const read=file=>readFile(path.join(root,file),'utf8');
 const assert=(condition,message)=>{if(!condition)throw new Error(message);};
 
-const [packageText,index,bootstrap,worker,evaluation,evaluationFlow,xlsx,supervisor,fileAnalysis,sourceGuard,database,security,admin,syncCore,sync,appsScript]=await Promise.all([
+const [packageText,index,bootstrap,worker,evaluation,evaluationFlow,xlsx,supervisor,fileAnalysis,sourceGuard,database,security,admin,syncCore,sync,appsScript,platform,userAccess]=await Promise.all([
   read('package.json'),read('index.html'),read('app-bootstrap.js'),read('sw.js'),read('app-eval.js'),
   read('app-evaluation-flow.js'),read('app-xlsx-workflow.js'),read('app-supervisor.js'),
   read('app-supervisor-file-analysis.js'),read('app-analysis-source-guard.js'),read('app-db.js'),
-  read('app-security.js'),read('app-admin-complete.js'),read('app-sync-core.js'),read('app-sync.js'),read('apps-script/Code.gs')
+  read('app-security.js'),read('app-admin-complete.js'),read('app-sync-core.js'),read('app-sync.js'),read('apps-script/Code.gs'),read('app-platform.js'),read('app-user-access-package.js')
 ]);
 const packageInfo=JSON.parse(packageText);
 const version=packageInfo.version;
@@ -58,6 +58,13 @@ for(const store of ['syncQueue','syncReceipts','syncAlerts','syncArchive'])asser
 assert(syncCore.includes('cleanupEligible')&&sync.includes('core().cleanupEligible'),'La limpieza automática no exige recibo y hash mediante una regla comprobable.');
 assert(sync.includes("nav.querySelector('[data-view=\"export\"]')?.remove()")||sync.includes("nav.querySelector('[data-view=\"export\"]')"),'El Evaluador todavía conserva la navegación de exportación manual.');
 assert(sync.includes("nav.querySelector('[data-view=\"cleanup-security\"]')?.remove()"),'El Administrador todavía expone la autorización antigua de limpieza.');
+assert(platform.includes('platform-login-version')&&platform.includes('Versión ${PLATFORM_VERSION}'),'La pantalla de ingreso no muestra la versión instalada.');
+assert(platform.includes("document.querySelector('.login-card')")&&platform.includes('announceUpdate(registration)'),'Una actualización pendiente no se ofrece en la pantalla de ingreso.');
+assert(platform.includes("registration.waiting.postMessage({type:'SKIP_WAITING'})"),'La pantalla sin sesión no puede activar la actualización pendiente.');
+assert(userAccess.includes('Preparar dispositivo')&&userAccess.includes('devicePreparationModal'),'Falta el asistente único por usuario.');
+assert(userAccess.includes('name="evaluatorId"')&&userAccess.includes('name="evaluator"')&&userAccess.includes('name="role"'),'El asistente no bloquea ID, nombre y rol del destinatario.');
+assert(userAccess.includes('FenologiaSync.createProfile(values)'),'El asistente no genera el perfil desde los datos autocompletados.');
+assert(sync.includes("new Set(['0.15.0','0.15.1'])"),'La corrección dejó incompatibles los perfiles 0.15.0 existentes.');
 assert(index.includes('https://script.google.com')&&index.includes('https://script.googleusercontent.com'),'CSP no permite la respuesta firmada de Apps Script.');
 assert(appsScript.includes('LockService.getScriptLock()'),'Apps Script no bloquea escrituras concurrentes.');
 assert(appsScript.includes('REGISTRO_UUID')&&appsScript.includes('BANDEJA_ENTRADA'),'Apps Script no conserva idempotencia y recuperación.');

@@ -1,5 +1,5 @@
 (() => {
-  const PLATFORM_VERSION = '0.12.1';
+  const PLATFORM_VERSION = '0.15.1';
   let installPrompt = null;
   let serviceWorkerRegistration = null;
   let updateAvailable = false;
@@ -45,15 +45,37 @@
 
   function decorateLogin(){
     const card=document.querySelector('.login-card');
-    if(!card || card.querySelector('.platform-login-card')) return;
-    const installed=isStandalone();
-    card.insertAdjacentHTML('beforeend',`<section class="platform-login-card ${installed?'installed':''}"><span>${installed?'✓':'⬇'}</span><div><b>${installed?'Aplicación instalada':'Instalar Fenología'}</b><p>${installed?'Se ejecuta como aplicación independiente y conserva los datos localmente.':'Agrégala a la pantalla principal para trabajar con acceso rápido y sin conexión.'}</p></div>${installed?'':`<button type="button" id="platform-install">Instalar</button>`}</section>`);
+    if(!card) return;
+    if(!card.querySelector('.platform-login-version')){
+      const form=card.querySelector('#login-form');
+      form?.insertAdjacentHTML('beforebegin',`<div class="platform-login-version"><span>Versión ${PLATFORM_VERSION}</span><small>Interfaz y accesos actualizados</small></div>`);
+    }
+    if(!card.querySelector('.platform-login-card')){
+      const installed=isStandalone();
+      card.insertAdjacentHTML('beforeend',`<section class="platform-login-card ${installed?'installed':''}"><span>${installed?'✓':'⬇'}</span><div><b>${installed?'Aplicación instalada':'Instalar Fenología'}</b><p>${installed?'Se ejecuta como aplicación independiente y conserva los datos localmente.':'Agrégala a la pantalla principal para trabajar con acceso rápido y sin conexión.'}</p></div>${installed?'':`<button type="button" id="platform-install">Instalar</button>`}</section>`);
+    }
+    decorateUpdate();
   }
 
   function decorateUpdate(){
     if(!updateAvailable || document.querySelector('#platform-update-banner')) return;
     const content=document.querySelector('.content');
-    content?.insertAdjacentHTML('afterbegin',updateBanner());
+    if(content){content.insertAdjacentHTML('afterbegin',updateBanner());return;}
+    const login=document.querySelector('.login-card');
+    if(login){login.insertAdjacentHTML('beforeend',updateBanner());document.querySelector('#platform-update-banner')?.classList.add('login-update');}
+  }
+
+  function hasActiveSession(){
+    return typeof state!=='undefined'&&Boolean(state.session);
+  }
+
+  function announceUpdate(registration){
+    updateAvailable=true;
+    decorateUpdate();
+    if(hasActiveSession()) return;
+    window.setTimeout(()=>{
+      if(registration.waiting&&!hasActiveSession()) registration.waiting.postMessage({type:'SKIP_WAITING'});
+    },800);
   }
 
   function decorateExportHelp(){
@@ -231,16 +253,11 @@
     try{
       const registration=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
       serviceWorkerRegistration=registration;
-      if(registration.waiting && navigator.serviceWorker.controller){
-        updateAvailable=true;decorateUpdate();
-      }
+      if(registration.waiting && navigator.serviceWorker.controller) announceUpdate(registration);
       registration.addEventListener('updatefound',()=>{
         const worker=registration.installing;
         worker?.addEventListener('statechange',()=>{
-          if(worker.state==='installed' && navigator.serviceWorker.controller){
-            updateAvailable=true;
-            decorateUpdate();
-          }
+          if(worker.state==='installed' && navigator.serviceWorker.controller) announceUpdate(registration);
         });
       });
       navigator.serviceWorker.addEventListener('controllerchange',()=>{

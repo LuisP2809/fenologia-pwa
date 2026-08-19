@@ -1,6 +1,6 @@
 # Modelo de seguridad local y central
 
-Fenología 0.15.0 continúa siendo *offline-first*: primero confirma el guardado en el dispositivo y después sincroniza. El servicio de Apps Script añade autoridad central cuando está instalado; sin ese despliegue, la aplicación permanece en modo local protegido.
+Fenología 0.15.1 continúa siendo *offline-first*: primero confirma el guardado en el dispositivo y después sincroniza. El servicio de Apps Script añade autoridad central cuando está instalado; sin ese despliegue, la aplicación permanece en modo local protegido.
 
 ## Controles implementados
 
