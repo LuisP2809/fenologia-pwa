@@ -1,5 +1,6 @@
 (() => {
-  const VERSION='0.15.1';
+  const VERSION='0.16.0';
+  const SYSTEM_EPOCH='fresh-start-v1';
   const CLEANUP_ADMIN_KEY='fenologia-cleanup-admin-profiles-v1';
   const CONFIG_KEY='admin-config-v1';
   const CACHE_KEY='fenologia-admin-config-cache-v1';
@@ -69,6 +70,7 @@
     const core={
       type:'fenologia-config-package',
       version:2,
+      systemEpoch:SYSTEM_EPOCH,
       packageId:`PKG-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`,
       issuedAt:now(),
       issuedBy:state.session.name,
