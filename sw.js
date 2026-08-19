@@ -6,7 +6,7 @@ const ASSETS=[
   versioned('./icons/icon-192.png'),versioned('./icons/icon-512.png'),versioned('./icons/icon-maskable.png'),
   versioned('./icons/icon-192.svg'),versioned('./icons/icon-512.svg'),versioned('./icons/icon-maskable.svg'),
   './data/catalogos.json',versioned('./data/lotes-mapa.geojson'),
-  versioned('./app-db.js'),versioned('./app-bootstrap.js'),versioned('./app-core.js'),versioned('./app-eval.js'),
+  versioned('./app-updater.js'),versioned('./app-db.js'),versioned('./app-bootstrap.js'),versioned('./app-core.js'),versioned('./app-eval.js'),
   versioned('./app-admin.js'),versioned('./app-credentials.js'),versioned('./app-package-security.js'),versioned('./app-security.js'),versioned('./app-workflow-patches.js'),versioned('./app-export-filters.js'),
   versioned('./app-db-ui.js'),versioned('./app-supervisor.js'),versioned('./app-supervisor-role.js'),versioned('./app-supervisor-unified.js'),
   versioned('./app-map.js'),versioned('./app-charts.js'),versioned('./app-admin-complete.js'),versioned('./app-admin-dni-fix.js'),

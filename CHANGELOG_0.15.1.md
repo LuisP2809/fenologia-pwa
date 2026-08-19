@@ -6,6 +6,7 @@ Estado: candidata local, sin publicar.
 
 - La versión aparece siempre en la pantalla de ingreso.
 - Una actualización pendiente puede activarse aunque todavía no exista una sesión iniciada.
+- Un puente de arranque externo reemplaza primero la caché 0.15.0 y solo después carga los módulos 0.15.1.
 - El aviso de actualización también se muestra dentro de la tarjeta de bienvenida.
 - Cada usuario dispone de un único botón **Preparar dispositivo**.
 - El asistente completa automáticamente ID, nombre y rol para evitar cruces.
