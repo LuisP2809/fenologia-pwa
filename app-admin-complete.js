@@ -1,5 +1,6 @@
 (() => {
-  const VERSION = '0.10.0';
+  const VERSION = '0.16.0';
+  const SYSTEM_EPOCH = 'fresh-start-v1';
   const CONFIG_KEY = 'admin-config-v1';
   const MAP_KEY = 'admin-map-v1';
   const HISTORY_KEY = 'admin-config-history-v1';
@@ -42,6 +43,7 @@
   let configHistory = [];
   let initialized = false;
   let initPromise = null;
+  let creatingInitialAdmin = false;
 
   const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
   const now = () => new Date().toISOString();
@@ -113,6 +115,7 @@
     return {
       type:'fenologia-admin-config',
       version:1,
+      systemEpoch:SYSTEM_EPOCH,
       revision:1,
       updatedAt:now(),
       users:configuredUsers,
@@ -127,6 +130,7 @@
     const config=clone(value || {});
     config.type='fenologia-admin-config';
     config.version=1;
+    config.systemEpoch=SYSTEM_EPOCH;
     config.revision=Number(config.revision || 1);
     config.updatedAt=config.updatedAt || now();
     config.users=Array.isArray(config.users)?config.users:[];
@@ -533,6 +537,7 @@
     const core={
       type:'fenologia-config-package',
       version:2,
+      systemEpoch:SYSTEM_EPOCH,
       packageId:`PKG-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`,
       issuedAt:now(),
       issuedBy:state.session.name,
@@ -557,6 +562,7 @@
   async function importConfigPackage(file){
     const payload=JSON.parse(await file.text());
     if(payload?.type!=='fenologia-config-package'||payload?.version!==2||!payload.target||!payload.catalog) throw new Error('El archivo no es un paquete de configuración firmado compatible.');
+    if(payload.systemEpoch!==SYSTEM_EPOCH)throw new Error('Este acceso pertenece a la configuración anterior y quedó invalidado por el reinicio. Solicita un archivo nuevo.');
     const verified=await window.FenologiaPackageSecurity.verify(payload);
     if(verified.pendingTrust){
       const shown=verified.fingerprint.match(/.{1,4}/g).join('-');
@@ -575,7 +581,7 @@
       createdAt:now(),updatedAt:now()
     }));
     adminConfig=normalizeConfig({
-      type:'fenologia-admin-config',version:1,revision:core.revision || 1,updatedAt:now(),
+      type:'fenologia-admin-config',version:1,systemEpoch:SYSTEM_EPOCH,revision:core.revision || 1,updatedAt:now(),
       users:importedUsers,catalog:core.catalog,assignments:core.assignments || {},
       campaigns:core.campaigns || [defaultCampaign()],archivedLots:[]
     });
@@ -602,6 +608,19 @@
     previousLoginView();
     const card=document.querySelector('.login-card');
     if(!card || card.querySelector('.config-login-import')) return;
+    if(initialized&&!(adminConfig?.users || []).length){
+      card.innerHTML=`<div><span class="eyebrow green">CONFIGURACIÓN INICIAL</span><h2>Crear primer Administrador</h2><p>Este será el dispositivo principal desde el que crearás usuarios, roles y accesos.</p></div>
+        <form id="first-admin-form">
+          <label>Nombre completo<input name="name" autocomplete="name" required></label>
+          <label>DNI / PIN de 8 dígitos<input name="pin" type="password" inputmode="numeric" maxlength="8" pattern="\\d{8}" autocomplete="new-password" required></label>
+          <label>Confirmar DNI / PIN<input name="pinConfirmation" type="password" inputmode="numeric" maxlength="8" pattern="\\d{8}" autocomplete="new-password" required></label>
+          <div class="first-admin-role"><span>Rol asignado</span><b>Administrador principal</b></div>
+          <label class="first-admin-confirm"><input name="primaryDevice" type="checkbox" required><span>Confirmo que este es el dispositivo principal del Administrador.</span></label>
+          <button class="primary wide">Crear Administrador y continuar <span>→</span></button>
+        </form>
+        <div class="config-login-import"><b>¿Este es otro dispositivo?</b><p>Los Evaluadores y Supervisores no crean un Administrador: importan el acceso nuevo que reciben.</p><button class="secondary" type="button" id="login-import-config">Importar acceso</button><input type="file" id="login-config-file" accept=".json,application/json" hidden></div>`;
+      return;
+    }
     const binding=readJson(DEVICE_KEY,null);
     const form=card.querySelector('#login-form');
     const allowed=(adminConfig?.users || []).find(user=>user.id===binding?.targetId) || activeUsers().find(user=>user.role==='Evaluador') || activeUsers()[0];
@@ -665,6 +684,31 @@
   };
 
   document.addEventListener('submit',async event=>{
+    if(event.target.id==='first-admin-form'){
+      event.preventDefault();event.stopImmediatePropagation();
+      if(creatingInitialAdmin)return;
+      creatingInitialAdmin=true;
+      try{
+        await initialize();
+        if((adminConfig?.users || []).length)throw new Error('Ya existe un Administrador. Recarga e inicia sesión.');
+        const data=new FormData(event.target),name=safe(data.get('name')),pin=safe(data.get('pin')),confirmation=safe(data.get('pinConfirmation'));
+        if(name.length<3)throw new Error('Ingresa el nombre completo del Administrador.');
+        if(!/^\d{8}$/.test(pin))throw new Error('El DNI / PIN debe tener exactamente 8 dígitos.');
+        if(pin!==confirmation)throw new Error('La confirmación del DNI / PIN no coincide.');
+        if(data.get('primaryDevice')!=='on')throw new Error('Confirma que este es el dispositivo principal.');
+        const credential=await window.FenologiaCredentials.create(pin);
+        const user={id:'ADM-001',name,role:'Administrador',active:true,...credential,permissions:rolePermissions('Administrador'),createdAt:now(),updatedAt:now()};
+        adminConfig.users=[user];adminConfig.systemEpoch=SYSTEM_EPOCH;adminConfig.revision=1;adminConfig.updatedAt=now();
+        writeJson(CACHE_KEY,adminConfig);await setSetting(CONFIG_KEY,adminConfig);syncRuntime();
+        await recordHistory('Administrador inicial creado',{usuario:name,rol:'Administrador principal'},name);
+        const issuedAt=new Date();
+        state.session={id:user.id,name:user.name,role:user.role,permissions:[...user.permissions],issuedAt:issuedAt.toISOString(),lastActiveAt:issuedAt.toISOString(),expiresAt:new Date(issuedAt.getTime()+8*60*60*1000).toISOString()};
+        localStorage.setItem('fenologia-session',JSON.stringify(state.session));
+        state.view='home';render();showToast('Administrador principal creado correctamente.');
+      }catch(error){showToast(error.message||'No se pudo crear el Administrador principal.');}
+      finally{creatingInitialAdmin=false;}
+      return;
+    }
     if(event.target.id==='login-form'){
       event.preventDefault();event.stopImmediatePropagation();
       await initialize();
@@ -875,7 +919,7 @@
     }
   });
 
-  window.FenologiaAdmin={ready:()=>initialize(),config:()=>clone(adminConfig),map:()=>clone(adminMap),importPackage:importConfigPackage};
+  window.FenologiaAdmin={version:VERSION,systemEpoch:SYSTEM_EPOCH,ready:()=>initialize(),config:()=>clone(adminConfig),map:()=>clone(adminMap),importPackage:importConfigPackage};
 
   initialize();
 })();

@@ -1,5 +1,5 @@
 (() => {
-  const PLATFORM_VERSION = '0.15.1';
+  const PLATFORM_VERSION = '0.16.0';
   let installPrompt = null;
   let serviceWorkerRegistration = null;
   let updateAvailable = false;
@@ -47,7 +47,7 @@
     const card=document.querySelector('.login-card');
     if(!card) return;
     if(!card.querySelector('.platform-login-version')){
-      const form=card.querySelector('#login-form');
+      const form=card.querySelector('#login-form, #first-admin-form');
       form?.insertAdjacentHTML('beforebegin',`<div class="platform-login-version"><span>Versión ${PLATFORM_VERSION}</span><small>Interfaz y accesos actualizados</small></div>`);
     }
     if(!card.querySelector('.platform-login-card')){

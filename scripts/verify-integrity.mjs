@@ -35,6 +35,9 @@ assert(index.includes('Content-Security-Policy'),'Falta la política de segurida
 assert(!index.includes('onclick='),'index.html contiene manejadores en línea incompatibles con CSP.');
 assert(index.includes('app-updater.js')&&updater.includes('activatePendingWorker'),'Falta el puente externo para activar la actualización antes del bootstrap.');
 assert(updater.includes("waiting.postMessage({type:'SKIP_WAITING'})")&&updater.includes('location.reload()'),'El puente no activa y recarga la nueva caché.');
+assert(updater.includes("RESET_MARKER='fenologia-fresh-start-v1'")&&updater.includes("deleteDatabase(DATABASE_NAME)"),'Falta el reinicio local único de la nueva etapa.');
+assert(updater.includes("key.startsWith('fenologia-')")&&updater.includes('LOCAL_KEYS.has(key)'),'El reinicio no limita el borrado a datos de Fenología.');
+assert(!updater.includes('localStorage.clear()')&&!updater.includes('sessionStorage.clear()'),'El reinicio puede borrar datos ajenos alojados en el mismo origen.');
 
 const modules=[...bootstrap.matchAll(/'([^']+\.js)'/g)].map(match=>match[1]);
 for(const module of modules)await access(path.join(root,module));
@@ -66,7 +69,10 @@ assert(platform.includes("registration.waiting.postMessage({type:'SKIP_WAITING'}
 assert(userAccess.includes('Preparar dispositivo')&&userAccess.includes('devicePreparationModal'),'Falta el asistente único por usuario.');
 assert(userAccess.includes('name="evaluatorId"')&&userAccess.includes('name="evaluator"')&&userAccess.includes('name="role"'),'El asistente no bloquea ID, nombre y rol del destinatario.');
 assert(userAccess.includes('FenologiaSync.createProfile(values)'),'El asistente no genera el perfil desde los datos autocompletados.');
-assert(sync.includes("new Set(['0.15.0','0.15.1'])"),'La corrección dejó incompatibles los perfiles 0.15.0 existentes.');
+assert(admin.includes("SYSTEM_EPOCH = 'fresh-start-v1'")&&userAccess.includes("SYSTEM_EPOCH='fresh-start-v1'"),'Los accesos no pertenecen a la nueva etapa del sistema.');
+assert(admin.includes("payload.systemEpoch!==SYSTEM_EPOCH")&&admin.includes('quedó invalidado por el reinicio'),'La importación todavía permite accesos creados antes del reinicio.');
+assert(admin.includes('id="first-admin-form"')&&admin.includes("id:'ADM-001'")&&admin.includes('Administrador principal'),'Falta la creación guiada del primer Administrador.');
+assert(sync.includes("new Set(['0.16.0'])"),'Los perfiles de sincronización anteriores al reinicio todavía son compatibles.');
 assert(index.includes('https://script.google.com')&&index.includes('https://script.googleusercontent.com'),'CSP no permite la respuesta firmada de Apps Script.');
 assert(appsScript.includes('LockService.getScriptLock()'),'Apps Script no bloquea escrituras concurrentes.');
 assert(appsScript.includes('REGISTRO_UUID')&&appsScript.includes('BANDEJA_ENTRADA'),'Apps Script no conserva idempotencia y recuperación.');

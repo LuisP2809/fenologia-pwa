@@ -1,6 +1,6 @@
 # Modelo de seguridad local y central
 
-Fenología 0.15.1 continúa siendo *offline-first*: primero confirma el guardado en el dispositivo y después sincroniza. El servicio de Apps Script añade autoridad central cuando está instalado; sin ese despliegue, la aplicación permanece en modo local protegido.
+Fenología 0.16.0 continúa siendo *offline-first*: primero confirma el guardado en el dispositivo y después sincroniza. El servicio de Apps Script añade autoridad central cuando está instalado; sin ese despliegue, la aplicación permanece en modo local protegido.
 
 ## Controles implementados
 
@@ -12,6 +12,13 @@ Fenología 0.15.1 continúa siendo *offline-first*: primero confirma el guardado
 - Tokens individuales: el servidor conserva únicamente su hash y las consultas se firman con HMAC, timestamp y nonce.
 - Bloqueo global de Apps Script, UUID, clave lógica, hash, revisión, bandeja de entrada y auditoría central.
 - Política CSP, límites de tamaño y validación estructural de JSON, GeoJSON y XLSX.
+- Etapa de sistema identificada: los accesos y perfiles anteriores al inicio limpio 0.16.0 son rechazados.
+
+## Inicio inicial y distribución de accesos
+
+Cuando un dispositivo abre 0.16.0 por primera vez, Fenología elimina una sola vez su propia base IndexedDB, sesiones y configuraciones locales anteriores. El borrado está limitado a claves de Fenología y no usa una limpieza completa del almacenamiento del dominio. Los archivos de Google Drive o Sheets no forman parte de esta operación.
+
+Si después del reinicio no existen usuarios, la pantalla inicial permite crear únicamente `ADM-001`, con rol Administrador principal. Los otros dispositivos deben usar **Importar acceso** con un archivo nuevo emitido por ese Administrador; no pueden crear otro Administrador inicial.
 
 ## Límites y operación
 
