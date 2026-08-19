@@ -57,13 +57,16 @@ await windowObject.FenologiaSync.ready;
 const preparedProfile=await windowObject.FenologiaSync.createProfile({
   endpoint:'https://script.google.com/macros/s/PRUEBA/exec',evaluatorId:'EVA-001',evaluator:'Evaluador 1',role:'Evaluador',deviceToken:'123456789012345678901234'
 });
-assert(preparedProfile.version==='0.15.1'&&preparedProfile.evaluatorId==='EVA-001','El asistente no generó el perfil con el usuario autocompletado.');
+assert(preparedProfile.version==='0.16.0'&&preparedProfile.evaluatorId==='EVA-001','El asistente no generó el perfil con el usuario autocompletado.');
 assert(downloads.at(-1)?.name==='Perfil-Sync-EVA-001.json','El asistente no descargó el nombre de perfil esperado.');
-const legacyProfile={...preparedProfile,version:'0.15.0'};
-await windowObject.FenologiaSync.installProfile({size:JSON.stringify(legacyProfile).length,text:async()=>JSON.stringify(legacyProfile)});
-assert(windowObject.FenologiaSync.getConfig().deviceToken===legacyProfile.deviceToken,'Un perfil 0.15.0 compatible no pudo instalarse.');
+const invalidatedProfile={...preparedProfile,version:'0.15.1'};
+let invalidatedRejected=false;
+try{await windowObject.FenologiaSync.installProfile({size:JSON.stringify(invalidatedProfile).length,text:async()=>JSON.stringify(invalidatedProfile)});}catch{invalidatedRejected=true;}
+assert(invalidatedRejected,'Un perfil anterior al reinicio todavía pudo instalarse.');
+await windowObject.FenologiaSync.installProfile({size:JSON.stringify(preparedProfile).length,text:async()=>JSON.stringify(preparedProfile)});
+assert(windowObject.FenologiaSync.getConfig().deviceToken===preparedProfile.deviceToken,'El perfil 0.16.0 no pudo instalarse.');
 let wrongOwnerRejected=false;
-try{await windowObject.FenologiaSync.installProfile({size:100,text:async()=>JSON.stringify({...legacyProfile,evaluatorId:'EVA-999'})});}catch{wrongOwnerRejected=true;}
+try{await windowObject.FenologiaSync.installProfile({size:100,text:async()=>JSON.stringify({...preparedProfile,evaluatorId:'EVA-999'})});}catch{wrongOwnerRejected=true;}
 assert(wrongOwnerRejected,'El dispositivo aceptó un perfil perteneciente a otro usuario.');
 await windowObject.FenologiaSync.saveConfig({enabled:true,transport:'mock',cleanupEnabled:false,retentionWeeks:1});
 
