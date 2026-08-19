@@ -1,6 +1,6 @@
 (() => {
-  const VERSION='0.15.1';
-  const COMPATIBLE_PROFILE_VERSIONS=new Set(['0.15.0','0.15.1']);
+  const VERSION='0.16.0';
+  const COMPATIBLE_PROFILE_VERSIONS=new Set(['0.16.0']);
   const CONFIG_KEY='fenologia-sync-config-v1';
   const DEVICE_ID_KEY='fenologia-sync-device-id-v1';
   const ACTIVE_SNAPSHOT_KEY='__ACTIVE_REMOTE_SNAPSHOT__';
