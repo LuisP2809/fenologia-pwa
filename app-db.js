@@ -1,10 +1,12 @@
 (() => {
   const DB_NAME = 'fenologia-pwa';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const MIGRATION_KEY = 'indexeddb-migration-v1';
   const LOCAL_MIGRATION_MARKER = 'fenologia-indexeddb-migrated-v1';
   const LEGACY_RECORDS_KEY = 'fenologia-records';
   const LEGACY_ASSIGNMENTS_KEY = 'fenologia-assignments';
+  const SYNC_STORES = new Set(['syncQueue','syncReceipts','syncAlerts','syncArchive']);
+  const FALLBACK_SYNC_PREFIX = 'fenologia-sync-store-v1:';
   const TRACKED_LOCAL_KEYS = [
     'fenologia-cleanup-admin-profiles-v1',
     'fenologia-cleanup-device-profile-v1',
@@ -65,6 +67,30 @@
           const imports = db.createObjectStore('imports',{keyPath:'id'});
           imports.createIndex('importedAt','importedAt',{unique:false});
         }
+        if(!db.objectStoreNames.contains('syncQueue')){
+          const queue = db.createObjectStore('syncQueue',{keyPath:'id'});
+          queue.createIndex('status','status',{unique:false});
+          queue.createIndex('nextAttemptAt','nextAttemptAt',{unique:false});
+          queue.createIndex('updatedAt','updatedAt',{unique:false});
+        }
+        if(!db.objectStoreNames.contains('syncReceipts')){
+          const receipts = db.createObjectStore('syncReceipts',{keyPath:'id'});
+          receipts.createIndex('syncedAt','syncedAt',{unique:false});
+          receipts.createIndex('evaluatorId','evaluatorId',{unique:false});
+          receipts.createIndex('weekKey','weekKey',{unique:false});
+        }
+        if(!db.objectStoreNames.contains('syncAlerts')){
+          const alerts = db.createObjectStore('syncAlerts',{keyPath:'id'});
+          alerts.createIndex('status','status',{unique:false});
+          alerts.createIndex('createdAt','createdAt',{unique:false});
+          alerts.createIndex('evaluatorId','evaluatorId',{unique:false});
+        }
+        if(!db.objectStoreNames.contains('syncArchive')){
+          const archive = db.createObjectStore('syncArchive',{keyPath:'weekKey'});
+          archive.createIndex('campaign','campaign',{unique:false});
+          archive.createIndex('status','status',{unique:false});
+          archive.createIndex('updatedAt','updatedAt',{unique:false});
+        }
       };
       request.onsuccess = () => {
         database = request.result;
@@ -91,6 +117,7 @@
   }
 
   async function getSetting(key){
+    if(fallbackMode) return parseJson(localStorage.getItem(`${FALLBACK_SYNC_PREFIX}setting:${key}`),null);
     const db = await openDatabase();
     const tx = db.transaction('settings','readonly');
     const result = await requestPromise(tx.objectStore('settings').get(key));
@@ -98,6 +125,10 @@
   }
 
   async function setSetting(key,value){
+    if(fallbackMode){
+      localStorage.setItem(`${FALLBACK_SYNC_PREFIX}setting:${key}`,JSON.stringify(value));
+      return;
+    }
     const db = await openDatabase();
     const tx = db.transaction('settings','readwrite');
     tx.objectStore('settings').put({key,value,updatedAt:new Date().toISOString()});
@@ -105,9 +136,73 @@
   }
 
   async function removeSetting(key){
+    if(fallbackMode){
+      localStorage.removeItem(`${FALLBACK_SYNC_PREFIX}setting:${key}`);
+      return;
+    }
     const db = await openDatabase();
     const tx = db.transaction('settings','readwrite');
     tx.objectStore('settings').delete(key);
+    await transactionPromise(tx);
+  }
+
+  function assertSyncStore(storeName){
+    if(!SYNC_STORES.has(storeName)) throw new Error('Almacén de sincronización no permitido.');
+  }
+
+  function fallbackStore(storeName){
+    return parseJson(localStorage.getItem(`${FALLBACK_SYNC_PREFIX}${storeName}`),[]);
+  }
+
+  function syncItemKey(storeName,item){
+    return storeName==='syncArchive'?item?.weekKey:item?.id;
+  }
+
+  async function putSyncItem(storeName,item){
+    assertSyncStore(storeName);
+    const key=syncItemKey(storeName,item);
+    if(!key) throw new Error('El elemento de sincronización no tiene identificador.');
+    const snapshot=typeof structuredClone==='function'?structuredClone(item):JSON.parse(JSON.stringify(item));
+    if(fallbackMode){
+      const items=fallbackStore(storeName);
+      const index=items.findIndex(entry=>syncItemKey(storeName,entry)===key);
+      if(index>=0) items[index]=snapshot; else items.push(snapshot);
+      localStorage.setItem(`${FALLBACK_SYNC_PREFIX}${storeName}`,JSON.stringify(items));
+      return snapshot;
+    }
+    const db=await openDatabase();
+    const tx=db.transaction(storeName,'readwrite');
+    tx.objectStore(storeName).put(snapshot);
+    await transactionPromise(tx);
+    return snapshot;
+  }
+
+  async function getSyncItem(storeName,key){
+    assertSyncStore(storeName);
+    if(fallbackMode) return fallbackStore(storeName).find(entry=>syncItemKey(storeName,entry)===key)||null;
+    const db=await openDatabase();
+    const tx=db.transaction(storeName,'readonly');
+    return (await requestPromise(tx.objectStore(storeName).get(key)))||null;
+  }
+
+  async function listSyncItems(storeName){
+    assertSyncStore(storeName);
+    if(fallbackMode) return fallbackStore(storeName);
+    const db=await openDatabase();
+    const tx=db.transaction(storeName,'readonly');
+    return (await requestPromise(tx.objectStore(storeName).getAll()))||[];
+  }
+
+  async function deleteSyncItem(storeName,key){
+    assertSyncStore(storeName);
+    if(fallbackMode){
+      const items=fallbackStore(storeName).filter(entry=>syncItemKey(storeName,entry)!==key);
+      localStorage.setItem(`${FALLBACK_SYNC_PREFIX}${storeName}`,JSON.stringify(items));
+      return;
+    }
+    const db=await openDatabase();
+    const tx=db.transaction(storeName,'readwrite');
+    tx.objectStore(storeName).delete(key);
     await transactionPromise(tx);
   }
 
@@ -301,6 +396,10 @@
     removeSetting,
     getMeta,
     setMeta,
+    putSyncItem,
+    getSyncItem,
+    listSyncItems,
+    deleteSyncItem,
     isReady:() => ready,
     isFallback:() => fallbackMode,
     migrationInfo:() => window.__FENOLOGIA_MIGRATION_INFO__ || null

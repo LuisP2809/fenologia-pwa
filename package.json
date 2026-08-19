@@ -1,13 +1,14 @@
 {
   "name": "fenologia-pwa",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "type": "module",
   "description": "Evaluaciones fenológicas y biométricas offline para campo.",
   "scripts": {
-    "test": "node scripts/verify-js.mjs && node scripts/verify-integrity.mjs && node scripts/verify-crypto.mjs && node scripts/verify-pwa.mjs && node scripts/verify-geojson.mjs",
+    "test": "node scripts/verify-js.mjs && node scripts/verify-integrity.mjs && node scripts/verify-crypto.mjs && node scripts/verify-sync.mjs && node scripts/verify-sync-runtime.mjs && node scripts/verify-pwa.mjs && node scripts/verify-geojson.mjs",
     "verify:integrity": "node scripts/verify-integrity.mjs",
     "verify:pwa": "node scripts/verify-pwa.mjs",
+    "verify:sync": "node scripts/verify-sync.mjs && node scripts/verify-sync-runtime.mjs",
     "verify:geojson": "node scripts/verify-geojson.mjs",
     "build:web": "npm run verify:geojson && node scripts/prepare-web.mjs",
     "android:init": "npm run build:web && npx cap add android",

@@ -32,7 +32,7 @@
     const pageTitle = document.querySelector('.page-title');
     const description = pageTitle?.querySelector('p');
     if(description){
-      description.textContent = 'Administra usuarios, catálogos, campañas, mapas y seguridad de limpieza.';
+      description.textContent = 'Administra usuarios, catálogos, campañas, mapas y sincronización segura.';
     }
   };
 

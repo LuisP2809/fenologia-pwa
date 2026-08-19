@@ -1,6 +1,6 @@
 # Fenología — PWA y APK
 
-## PWA 0.14.0
+## PWA 0.15.0
 
 Antes de publicar:
 
@@ -10,7 +10,9 @@ npm test
 npm run build:web
 ```
 
-Sirve `www/` mediante HTTPS y comprueba instalación, primera carga, reinicio sin conexión, persistencia de una evaluación, respaldo y recuperación interna. GitHub Pages publica únicamente desde `main`, ramas `release/**` o una ejecución manual autorizada.
+Sirve `www/` mediante HTTPS y comprueba instalación, primera carga, reinicio sin conexión, persistencia, cola pendiente y confirmación central. La prueba automatizada incluye 2,400 evaluaciones semanales y reenvíos idempotentes. GitHub Pages publica únicamente desde `main`, ramas `release/**` o una ejecución manual autorizada.
+
+La PWA funciona sin desplegar el backend, pero en ese estado conserva los registros como pendientes locales. Para una prueba real con Drive, instala por separado el contenido de `apps-script/`, registra usuarios de prueba y entrega a cada dispositivo su perfil individual. No uses datos productivos hasta validar un ciclo completo de captura, desconexión, reconexión, archivo semanal, gráfico y limpieza.
 
 ## APK Android de prueba
 

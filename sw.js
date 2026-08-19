@@ -1,5 +1,5 @@
-const CACHE='fenologia-v0.14.0-map-stable';
-const VERSION='0.14.0';
+const CACHE='fenologia-v0.15.0-drive-sync';
+const VERSION='0.15.0';
 const versioned=path=>`${path}?v=${VERSION}`;
 const ASSETS=[
   './','./index.html',versioned('./manifest.webmanifest'),
@@ -13,12 +13,12 @@ const ASSETS=[
   versioned('./app-user-access-package.js'),versioned('./app-admin-role-cleanup.js'),versioned('./app-dynamic-parameters.js'),versioned('./app-dynamic-supervisor.js'),
   versioned('./app-stage-analytics.js'),versioned('./app-stage-analytics-ui.js'),versioned('./app-charts-refinement.js'),versioned('./app-platform.js'),
   versioned('./app-xlsx-workflow.js'),versioned('./app-xlsx-compat.js'),versioned('./app-supervisor-file-analysis.js'),versioned('./app-analysis-source-guard.js'),
-  versioned('./app-evaluator-navigation.js'),versioned('./app-evaluation-flow.js'),versioned('./app-session-security.js'),versioned('./app-release.js'),
+  versioned('./app-evaluator-navigation.js'),versioned('./app-evaluation-flow.js'),versioned('./app-session-security.js'),versioned('./app-sync-core.js'),versioned('./app-sync.js'),versioned('./app-release.js'),
   versioned('./css-core.css'),versioned('./css-ui.css'),versioned('./css-extra.css'),versioned('./css-workflow-patches.css'),
   versioned('./css-security.css'),versioned('./css-export-filters.css'),versioned('./css-db.css'),versioned('./css-supervisor.css'),
   versioned('./css-supervisor-role.css'),versioned('./css-supervisor-unified.css'),versioned('./css-mobile-header.css'),versioned('./css-map.css'),
   versioned('./css-charts.css'),versioned('./css-stage-analytics.css'),versioned('./css-admin-complete.css'),versioned('./css-dynamic-parameters.css'),
-  versioned('./css-platform.css'),versioned('./css-xlsx-workflow.css')
+  versioned('./css-platform.css'),versioned('./css-xlsx-workflow.css'),versioned('./css-sync.css')
 ];
 
 self.addEventListener('install',event=>{

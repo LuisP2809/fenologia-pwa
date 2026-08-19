@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.14.0', MAP_PATH='data/lotes-mapa.geojson', W=1200, H=760, PAD=32;
+  const VERSION='0.15.0', MAP_PATH='data/lotes-mapa.geojson', W=1200, H=760, PAD=32;
   const iso=(d=new Date())=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
   const m={data:null,loading:null,error:'',from:iso(),to:iso(),field:'',farm:'',module:'',variety:'',evaluator:'',lot:'',zoom:1,x:0,y:0,drag:null};
   const roles=()=>['Evaluador','Supervisor','Administrador'].includes(state.session?.role);
@@ -236,4 +236,3 @@
   });
   if(typeof state!=='undefined'&&state.catalog&&state.view==='map')renderPage();
 })();
-

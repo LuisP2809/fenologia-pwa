@@ -1,7 +1,7 @@
 (() => {
-  const APP_VERSION = '0.14.0';
+  const APP_VERSION = '0.15.0';
   const scripts = [
-    'app-core.js','app-eval.js','app-admin.js','app-credentials.js','app-package-security.js','app-security.js','app-workflow-patches.js','app-export-filters.js','app-db-ui.js','app-supervisor.js','app-supervisor-role.js','app-supervisor-unified.js','app-map.js','app-charts.js','app-admin-complete.js','app-admin-dni-fix.js','app-user-access-package.js','app-admin-role-cleanup.js','app-dynamic-parameters.js','app-dynamic-supervisor.js','app-stage-analytics.js','app-stage-analytics-ui.js','app-charts-refinement.js','app-platform.js','app-xlsx-workflow.js','app-xlsx-compat.js','app-supervisor-file-analysis.js','app-analysis-source-guard.js','app-evaluator-navigation.js','app-evaluation-flow.js','app-session-security.js','app-release.js'
+    'app-core.js','app-eval.js','app-admin.js','app-credentials.js','app-package-security.js','app-security.js','app-workflow-patches.js','app-export-filters.js','app-db-ui.js','app-supervisor.js','app-supervisor-role.js','app-supervisor-unified.js','app-map.js','app-charts.js','app-admin-complete.js','app-admin-dni-fix.js','app-user-access-package.js','app-admin-role-cleanup.js','app-dynamic-parameters.js','app-dynamic-supervisor.js','app-stage-analytics.js','app-stage-analytics-ui.js','app-charts-refinement.js','app-platform.js','app-xlsx-workflow.js','app-xlsx-compat.js','app-supervisor-file-analysis.js','app-analysis-source-guard.js','app-evaluator-navigation.js','app-evaluation-flow.js','app-session-security.js','app-sync-core.js','app-sync.js','app-release.js'
   ];
   function loadingView(message,detail='Preparando el almacenamiento local seguro…'){
     const app=document.querySelector('#app');if(!app)return;
