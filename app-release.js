@@ -1,5 +1,5 @@
 (() => {
-  const RELEASE_VERSION = '0.15.1';
+  const RELEASE_VERSION = '0.16.0';
   const previousSidebar = sidebar;
   sidebar = function releaseSidebar(){
     return previousSidebar().replace(/Versión\s+[0-9.]+/g,`Versión ${RELEASE_VERSION}`);
