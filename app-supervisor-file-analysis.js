@@ -238,13 +238,13 @@
     if(!filters) return;
     document.querySelector('#chart-file-analysis-panel')?.remove();
     filters.insertAdjacentHTML('beforebegin',`<section class="panel file-analysis-panel chart-file-panel" id="chart-file-analysis-panel">
-      <div class="panel-head"><div><span>FUENTE DE LOS GRÁFICOS</span><h2>Analizar archivos Excel seleccionados</h2><p>Los gráficos, mapas y comparativos usarán exclusivamente los Excel que cargues aquí durante esta sesión.</p></div></div>
+      <div class="panel-head"><div><span>HISTÓRICO COMPLEMENTARIO</span><h2>Agregar archivos Excel al análisis</h2><p>Los gráficos y el mapa usan la semana recibida en línea. Los Excel que cargues aquí permiten sumar semanas históricas durante esta sesión.</p></div></div>
       <input id="chart-analysis-files" type="file" accept=".xlsx,${XLSX_MIME}" multiple hidden>
       ${filesHtml(analysis.files)}
       ${statsHtml(analysis)}
       ${issuesHtml(analysis.issues)}
       ${conflictHtml(analysis.conflicts)}
-      ${analysis.loaded?'<div class="file-analysis-active">✓ Base analítica activa. No se están sumando consolidaciones anteriores.</div>':'<div class="file-analysis-empty">Selecciona uno o varios Excel para definir la base que quieres analizar.</div>'}
+      ${analysis.loaded?'<div class="file-analysis-active">✓ Histórico cargado y combinado sin duplicar UUID con la semana en línea.</div>':'<div class="file-analysis-empty">La semana en línea sigue activa. Selecciona uno o varios Excel solamente si necesitas consultar semanas anteriores.</div>'}
       <div class="file-analysis-actions">
         <button type="button" class="primary" id="select-chart-analysis-files">${analysis.loaded?'Cambiar archivos para analizar':'Seleccionar archivos para analizar'}</button>
         ${analysis.loaded?'<button type="button" class="secondary" id="clear-chart-analysis">Vaciar análisis</button>':''}

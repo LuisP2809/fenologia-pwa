@@ -12,15 +12,21 @@ const core=coreContext.window.FenologiaSyncCore;
 const serverSource=await readFile('apps-script/Code.gs','utf8');
 const serverContext={Date,JSON,Math,Number,String,Array,Object,Set,Map,console};
 vm.createContext(serverContext);
-vm.runInContext(`${serverSource}\n;globalThis.__serverTest={FENO_HEADERS,BIO_HEADERS,PARAM_HEADERS,weekKey_,businessKey_,canonicalString_,fenologyRow_,biometryRow_,classifyEntry_};`,serverContext,{filename:'apps-script/Code.gs'});
+vm.runInContext(`${serverSource}\n;globalThis.__serverTest={FENO_HEADERS,BIO_HEADERS,PARAM_HEADERS,weekKey_,businessKey_,canonicalString_,fenologyRow_,biometryRow_,classifyEntry_,validateCentralConfig_};`,serverContext,{filename:'apps-script/Code.gs'});
 const server=serverContext.__serverTest;
 
-assert(core.VERSION==='0.15.0','El núcleo de sincronización no corresponde a 0.15.0.');
+assert(core.VERSION==='0.17.0','El núcleo de sincronización no corresponde a 0.17.0.');
 assert(core.isoWeekInfo('2021-01-01').key==='2020-S53','La semana ISO falla al cruzar de año.');
 assert(core.isoWeekInfo('2024-12-30').key==='2025-S01','La primera semana ISO del año siguiente es incorrecta.');
 assert(server.FENO_HEADERS.length===44,'La hoja FENOLOGIA no conserva 44 columnas.');
 assert(server.BIO_HEADERS.length===124,'La hoja BIOMETRIA no conserva 124 columnas.');
 assert(server.PARAM_HEADERS.length===18,'La hoja de parámetros no conserva 18 columnas.');
+const centralConfiguration=server.validateCentralConfig_({
+  type:'fenologia-central-config',version:1,systemEpoch:'fresh-start-v1',revision:2,updatedAt:'2026-08-19T12:00:00.000Z',
+  users:[{id:'ADM-001',name:'Administrador',role:'Administrador',active:true,permissions:['admin'],pinHash:'NO-DEBE-SALIR'}],
+  catalog:{lotesAgrupados:{}},assignments:{},campaigns:[],archivedLots:[]
+});
+assert(!('pinHash' in centralConfiguration.users[0]),'La configuración central expone credenciales locales.');
 
 function sampleRecord(overrides={}){
   return {
@@ -108,5 +114,6 @@ assert(dbSource.includes("'syncQueue'")&&dbSource.includes("'syncReceipts'"),'In
 assert(serverSource.includes('LockService.getScriptLock()'),'El servidor no serializa escrituras concurrentes.');
 assert(serverSource.includes("'PROCESSING'")&&serverSource.includes("'CONFIRMED'"),'El servidor no conserva estados recuperables de escritura.');
 assert(serverSource.includes('ensureRange_(sheet,row,values.length)')&&serverSource.includes('insertRowsAfter'),'El archivo semanal no amplía su cuadrícula antes de superar 1,000 filas.');
+assert(serverSource.includes('CONFIG_CENTRAL')&&serverSource.includes('publishCentralConfigLocked_'),'El servidor no publica la configuración operativa central.');
 
 console.log('Sincronización validada: 2,400 evaluaciones, 480 reenvíos, edición, conflicto, semanas ISO, cuadrante opcional y limpieza confirmada.');

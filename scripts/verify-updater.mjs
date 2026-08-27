@@ -69,7 +69,7 @@ assert(legacy.reloads===1,'El puente no recargó después de cambiar el worker.'
 assert(legacy.loaded.length===0,'El puente cargó módulos antes de reemplazar la caché anterior.');
 
 const fresh=await runScenario({controlled:false,waiting:false});
-assert(fresh.loaded.join('|')==='app-db.js?v=0.16.0|app-bootstrap.js?v=0.16.0','El inicio limpio no cargó DB y bootstrap 0.16.0 en orden.');
+assert(fresh.loaded.join('|')==='app-db.js?v=0.17.0|app-bootstrap.js?v=0.17.0','El inicio limpio no cargó DB y bootstrap 0.17.0 en orden.');
 assert(fresh.reloads===0,'El inicio limpio provocó una recarga innecesaria.');
 assert(fresh.deletedDatabases.join('|')==='fenologia-pwa','El reinicio no eliminó la base IndexedDB de Fenología.');
 assert(!('fenologia-session' in fresh.local)&&!('admin-config-v1' in fresh.local),'El reinicio conservó usuarios o sesiones anteriores.');

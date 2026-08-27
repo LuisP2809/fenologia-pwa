@@ -1,9 +1,9 @@
-/* Fenología 0.15.0 · servicio central Google Sheets/Drive.
+/* Fenología 0.17.0 · servicio central Google Sheets/Drive.
  * Este archivo se instala como un proyecto independiente de Google Apps Script.
  * No contiene tokens, IDs de Drive ni datos reales.
  */
 
-const FENOLOGIA_SYNC_VERSION = '0.15.0';
+const FENOLOGIA_SYNC_VERSION = '0.17.0';
 const CONTROL_ID_PROPERTY = 'FENOLOGIA_CONTROL_SPREADSHEET_ID';
 const ROOT_FOLDER_ID_PROPERTY = 'FENOLOGIA_ROOT_FOLDER_ID';
 const PENDING_ALERT_HOURS_PROPERTY = 'FENOLOGIA_PENDING_ALERT_HOURS';
@@ -38,7 +38,8 @@ const CONTROL_HEADERS = {
   REGISTRO_UUID:['UUID','CLAVE LÓGICA','HASH','REVISIÓN','SEMANA ARCHIVO','ARCHIVO ID','RECIBO','SINCRONIZADO','EVALUADOR ID','PAYLOAD JSON','ESTADO','ACTUALIZADO'],
   DISPOSITIVOS:['DISPOSITIVO ID','EVALUADOR ID','NOMBRE','ROL','ÚLTIMO CONTACTO','PENDIENTES','VERSIÓN APP','ESTADO'],
   ALERTAS:['ALERTA ID','CLAVE','TIPO','MENSAJE','EVALUADOR ID','SEMANA ARCHIVO','ESTADO','CREADO','RESUELTO'],
-  BANDEJA_ENTRADA:['SOLICITUD ID','EVALUADOR ID','RECIBIDO','ESTADO','PAYLOAD JSON','RESULTADOS JSON','ERROR','PROCESADO']
+  BANDEJA_ENTRADA:['SOLICITUD ID','EVALUADOR ID','RECIBIDO','ESTADO','PAYLOAD JSON','RESULTADOS JSON','ERROR','PROCESADO'],
+  CONFIG_CENTRAL:['CLAVE','REVISIÓN','HASH','CONFIGURACIÓN JSON','ACTUALIZADO','ACTUALIZADO POR']
 };
 
 function setupFenologia(){
@@ -52,7 +53,7 @@ function setupFenologia(){
   const savedControlId=properties.getProperty(CONTROL_ID_PROPERTY);
   try{if(savedControlId)control=SpreadsheetApp.openById(savedControlId);}catch(error){control=null;}
   if(!control){
-    control=SpreadsheetApp.create('FENOLOGIA_CONTROL_0_15_0');
+    control=SpreadsheetApp.create('FENOLOGIA_CONTROL_0_17_0');
     DriveApp.getFileById(control.getId()).moveTo(root);
     properties.setProperty(CONTROL_ID_PROPERTY,control.getId());
   }
@@ -82,6 +83,20 @@ function registerSyncUser(evaluatorId,name,role,plainToken){
   return {version:FENOLOGIA_SYNC_VERSION,evaluatorId:id,name:clean_(name),role:safeRole,deviceToken:token,warning:'Guarda este token de forma segura; no vuelve a mostrarse automáticamente.'};
 }
 
+function provisionSyncUserFromProperties(){
+  const properties=PropertiesService.getScriptProperties();
+  const id=clean_(properties.getProperty('FENOLOGIA_PROVISION_ID'));
+  const name=clean_(properties.getProperty('FENOLOGIA_PROVISION_NAME'));
+  const role=clean_(properties.getProperty('FENOLOGIA_PROVISION_ROLE'));
+  if(!id||!name||!role)throw new Error('Configura FENOLOGIA_PROVISION_ID, FENOLOGIA_PROVISION_NAME y FENOLOGIA_PROVISION_ROLE en las propiedades del proyecto.');
+  const profile=registerSyncUser(id,name,role);
+  properties.deleteProperty('FENOLOGIA_PROVISION_ID');
+  properties.deleteProperty('FENOLOGIA_PROVISION_NAME');
+  properties.deleteProperty('FENOLOGIA_PROVISION_ROLE');
+  console.log('PERFIL_SYNC='+JSON.stringify(profile));
+  return profile;
+}
+
 function revokeSyncUser(evaluatorId){
   resetRuntimeCaches_();
   const id=clean_(evaluatorId).toUpperCase();
@@ -97,10 +112,13 @@ function doPost(event){
   try{
     resetRuntimeCaches_();
     const body=JSON.parse(event&&event.postData&&event.postData.contents||'{}');
-    if(['submit','resolve-alert'].indexOf(body.action)<0)return jsonOutput_({ok:false,message:'Acción no permitida.'});
+    if(['submit','resolve-alert','publish-config'].indexOf(body.action)<0)return jsonOutput_({ok:false,message:'Acción no permitida.'});
     const lock=LockService.getScriptLock();
     lock.waitLock(30000);
-    try{return jsonOutput_(body.action==='submit'?submitLocked_(body):resolveAlertLocked_(body));}finally{lock.releaseLock();}
+    try{
+      const result=body.action==='submit'?submitLocked_(body):body.action==='resolve-alert'?resolveAlertLocked_(body):publishCentralConfigLocked_(body);
+      return jsonOutput_(result);
+    }finally{lock.releaseLock();}
   }catch(error){
     return jsonOutput_({ok:false,message:cleanError_(error)});
   }
@@ -116,6 +134,83 @@ function resolveAlertLocked_(body){
   return {ok:true,alertId:id,status:'resolved'};
 }
 
+function publishCentralConfigLocked_(body){
+  const user=authenticatePost_(body);
+  if(user.role!=='Administrador')throw new Error('Solo un Administrador puede publicar la configuración central.');
+  const configuration=validateCentralConfig_(body.configuration);
+  const actor=configuration.users.filter(function(item){return item.id===user.id;})[0];
+  if(!actor||actor.role!=='Administrador'||actor.active!==true)throw new Error('El Administrador que publica debe permanecer activo en la configuración.');
+  const hash=sha256Hex_(canonicalString_(configuration));
+  const sheet=control_().getSheetByName('CONFIG_CENTRAL');
+  const current=currentCentralConfig_();
+  if(current&&current.hash===hash){applyCentralUsers_(configuration.users);touchUser_(user);return {ok:true,status:'duplicate',revision:current.revision,hash:current.hash};}
+  if(current&&configuration.revision<=current.revision)throw new Error('La configuración central tiene una revisión más reciente o diferente.');
+  const json=JSON.stringify(configuration);
+  const values=['ACTIVE',configuration.revision,hash,json,new Date(),user.id];
+  if(current)sheet.getRange(current.row,1,1,values.length).setValues([values]);else sheet.appendRow(values);
+  applyCentralUsers_(configuration.users);
+  touchUser_(user);
+  return {ok:true,status:'published',revision:configuration.revision,hash:hash,updatedAt:new Date().toISOString()};
+}
+
+function centralConfigSnapshot_(user){
+  const current=currentCentralConfig_();
+  touchUser_(user);
+  if(!current)return {ok:true,available:false,version:FENOLOGIA_SYNC_VERSION};
+  return {ok:true,available:true,version:FENOLOGIA_SYNC_VERSION,revision:current.revision,hash:current.hash,updatedAt:current.updatedAt,configuration:current.configuration};
+}
+
+function currentCentralConfig_(){
+  const sheet=control_().getSheetByName('CONFIG_CENTRAL');
+  const rows=sheetValues_(sheet);
+  for(let index=1;index<rows.length;index++){
+    if(clean_(rows[index][0])!=='ACTIVE')continue;
+    const json=clean_(rows[index][3]);
+    if(!json)return null;
+    return {row:index+1,revision:Number(rows[index][1]||0),hash:clean_(rows[index][2]),configuration:JSON.parse(json),updatedAt:dateIso_(rows[index][4]),updatedBy:clean_(rows[index][5])};
+  }
+  return null;
+}
+
+function validateCentralConfig_(value){
+  if(!value||typeof value!=='object'||value.type!=='fenologia-central-config'||Number(value.version)!==1)throw new Error('La configuración central no es válida.');
+  if(clean_(value.systemEpoch)!=='fresh-start-v1')throw new Error('La configuración pertenece a una etapa anterior del sistema.');
+  const revision=Number(value.revision||0);
+  if(!Number.isInteger(revision)||revision<1)throw new Error('La revisión de configuración no es válida.');
+  if(!Array.isArray(value.users)||!value.users.length)throw new Error('La configuración no contiene usuarios.');
+  const seen={};
+  const users=value.users.map(function(item){
+    const id=clean_(item&&item.id).toUpperCase();const name=clean_(item&&item.name);const role=clean_(item&&item.role);
+    if(!/^[A-Z0-9_-]{3,40}$/.test(id)||!name)throw new Error('La configuración contiene un usuario incompleto.');
+    if(seen[id])throw new Error('La configuración repite el usuario '+id+'.');seen[id]=true;
+    if(['Evaluador','Supervisor','Administrador'].indexOf(role)<0)throw new Error('La configuración contiene un rol no válido.');
+    const permissions=Array.isArray(item.permissions)?item.permissions.map(clean_).filter(Boolean).slice(0,20):[];
+    return {id:id,name:name.slice(0,120),role:role,active:item.active!==false,permissions:permissions};
+  });
+  const cloneValue=function(input,fallback){try{return JSON.parse(JSON.stringify(input===undefined?fallback:input));}catch(error){throw new Error('La configuración contiene datos que no se pueden guardar.');}};
+  const result={
+    type:'fenologia-central-config',version:1,systemEpoch:'fresh-start-v1',revision:revision,
+    updatedAt:clean_(value.updatedAt)||new Date().toISOString(),users:users,
+    catalog:cloneValue(value.catalog,{}),assignments:cloneValue(value.assignments,{}),
+    campaigns:cloneValue(value.campaigns,[]),archivedLots:cloneValue(value.archivedLots,[])
+  };
+  const json=JSON.stringify(result);
+  if(json.length>45000)throw new Error('La configuración central supera el tamaño seguro de una celda de Google Sheets.');
+  return result;
+}
+
+function applyCentralUsers_(users){
+  const byId={};users.forEach(function(user){byId[user.id]=user;});
+  const sheet=control_().getSheetByName('USUARIOS_SYNC');
+  const rows=sheetValues_(sheet);
+  for(let index=1;index<rows.length;index++){
+    const id=clean_(rows[index][0]).toUpperCase();if(!id)continue;
+    const central=byId[id];
+    if(central){sheet.getRange(index+1,2).setValue(central.name);sheet.getRange(index+1,3).setValue(central.role);sheet.getRange(index+1,5).setValue(central.active);}
+    else sheet.getRange(index+1,5).setValue(false);
+  }
+}
+
 function doGet(event){
   resetRuntimeCaches_();
   const params=event&&event.parameter||{};
@@ -125,6 +220,7 @@ function doGet(event){
     const user=authenticateSignedGet_(params);
     if(params.action==='status')response=statusByRequest_(params,user);
     else if(params.action==='snapshot')response=snapshot_(params,user);
+    else if(params.action==='config')response=centralConfigSnapshot_(user);
     else response={ok:false,message:'Acción no permitida.'};
   }catch(error){response={ok:false,message:cleanError_(error)};}
   return callback?jsonpOutput_(callback,response):jsonOutput_(response);
@@ -404,13 +500,16 @@ function dateParts_(record){
 
 function authenticatePost_(body){
   const user=findUser_(body.evaluatorId);
-  if(!user||!user.active||!constantTimeEqual_(sha256Hex_(clean_(body.deviceToken)),user.tokenHash))throw new Error('Dispositivo no autorizado.');
+  if(!user)throw new Error('Dispositivo no autorizado.');
+  if(!user.active)throw new Error('Usuario desactivado.');
+  if(!constantTimeEqual_(sha256Hex_(clean_(body.deviceToken)),user.tokenHash))throw new Error('Dispositivo no autorizado.');
   return user;
 }
 
 function authenticateSignedGet_(params){
   const user=findUser_(params.evaluatorId);
-  if(!user||!user.active)throw new Error('Dispositivo no autorizado.');
+  if(!user)throw new Error('Dispositivo no autorizado.');
+  if(!user.active)throw new Error('Usuario desactivado.');
   const timestamp=Number(params.timestamp||0);
   if(!timestamp||Math.abs(Date.now()-timestamp)>5*60*1000)throw new Error('La firma venció.');
   const nonce=clean_(params.nonce);

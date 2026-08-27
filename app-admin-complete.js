@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.16.0';
+  const VERSION = '0.17.0';
   const SYSTEM_EPOCH = 'fresh-start-v1';
   const CONFIG_KEY = 'admin-config-v1';
   const MAP_KEY = 'admin-map-v1';
@@ -189,8 +189,64 @@
     writeJson(CACHE_KEY,adminConfig);
     await setSetting(CONFIG_KEY,adminConfig);
     syncRuntime();
-    save();
+    await save();
     await recordHistory(action,detail);
+    window.dispatchEvent(new CustomEvent('fenologia-admin-config-change',{detail:{action,snapshot:centralSnapshot()}}));
+  }
+
+  function centralSnapshot(){
+    if(!adminConfig)return null;
+    return {
+      type:'fenologia-central-config',version:1,systemEpoch:SYSTEM_EPOCH,
+      revision:Number(adminConfig.revision||1),updatedAt:adminConfig.updatedAt||now(),
+      users:(adminConfig.users||[]).map(user=>({
+        id:user.id,name:user.name,role:user.role,active:user.active!==false,
+        permissions:Array.isArray(user.permissions)?[...user.permissions]:rolePermissions(user.role)
+      })),
+      catalog:clone(adminConfig.catalog),assignments:clone(adminConfig.assignments||{}),
+      campaigns:clone(adminConfig.campaigns||[]),archivedLots:clone(adminConfig.archivedLots||[])
+    };
+  }
+
+  async function applyCentralConfig(snapshot){
+    if(!snapshot||snapshot.type!=='fenologia-central-config'||snapshot.version!==1)throw new Error('La configuración central no es válida.');
+    if(snapshot.systemEpoch!==SYSTEM_EPOCH)throw new Error('La configuración central pertenece a una etapa anterior del sistema.');
+    const incomingRevision=Number(snapshot.revision||0);
+    if(!Number.isInteger(incomingRevision)||incomingRevision<1)throw new Error('La revisión central no es válida.');
+    if(adminConfig&&incomingRevision<Number(adminConfig.revision||0))return {applied:false,reason:'local-newer'};
+    if(adminConfig&&incomingRevision===Number(adminConfig.revision||0)&&String(snapshot.updatedAt||'')===String(adminConfig.updatedAt||''))return {applied:false,reason:'already-current'};
+    const credentials=new Map((adminConfig?.users||[]).map(user=>[upper(user.id),{
+      pinHash:user.pinHash||'',pinSalt:user.pinSalt||'',pinAlgorithm:user.pinAlgorithm||'',pinIterations:Number(user.pinIterations||0)||null,
+      createdAt:user.createdAt||now()
+    }]));
+    const mergedUsers=(Array.isArray(snapshot.users)?snapshot.users:[]).map(user=>{
+      const credential=credentials.get(upper(user.id))||{};
+      return {...user,...credential,updatedAt:snapshot.updatedAt||now()};
+    });
+    adminConfig=normalizeConfig({
+      type:'fenologia-admin-config',version:1,systemEpoch:SYSTEM_EPOCH,revision:incomingRevision,updatedAt:snapshot.updatedAt||now(),
+      users:mergedUsers,catalog:snapshot.catalog,assignments:snapshot.assignments||{},campaigns:snapshot.campaigns||[defaultCampaign()],archivedLots:snapshot.archivedLots||[]
+    });
+    state.assignments=clone(adminConfig.assignments||{});
+    writeJson(CACHE_KEY,adminConfig);
+    await setSetting(CONFIG_KEY,adminConfig);
+    syncRuntime();
+    await save();
+    window.dispatchEvent(new CustomEvent('fenologia-central-config-applied',{detail:{revision:incomingRevision,updatedAt:adminConfig.updatedAt}}));
+    render();
+    return {applied:true,revision:incomingRevision};
+  }
+
+  async function handleCentralDeactivation(){
+    const currentId=upper(state.session?.id);
+    if(!currentId||!adminConfig)return false;
+    const user=adminConfig.users.find(item=>upper(item.id)===currentId);
+    if(user){user.active=false;user.updatedAt=now();writeJson(CACHE_KEY,adminConfig);await setSetting(CONFIG_KEY,adminConfig);}
+    localStorage.removeItem('fenologia-session');
+    state.session=null;state.view='home';
+    await save();
+    render();
+    return true;
   }
 
   async function initialize(){
@@ -919,7 +975,7 @@
     }
   });
 
-  window.FenologiaAdmin={version:VERSION,systemEpoch:SYSTEM_EPOCH,ready:()=>initialize(),config:()=>clone(adminConfig),map:()=>clone(adminMap),importPackage:importConfigPackage};
+  window.FenologiaAdmin={version:VERSION,systemEpoch:SYSTEM_EPOCH,ready:()=>initialize(),config:()=>clone(adminConfig),map:()=>clone(adminMap),importPackage:importConfigPackage,centralSnapshot,applyCentralConfig,handleCentralDeactivation};
 
   initialize();
 })();

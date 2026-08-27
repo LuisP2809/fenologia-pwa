@@ -1,6 +1,6 @@
 # Fenología — PWA y APK
 
-## PWA 0.16.0
+## PWA 0.17.0
 
 Antes de publicar:
 
@@ -12,9 +12,11 @@ npm run build:web
 
 Sirve `www/` mediante HTTPS y comprueba instalación, primera carga, reinicio sin conexión, persistencia, cola pendiente y confirmación central. La prueba automatizada incluye 2,400 evaluaciones semanales y reenvíos idempotentes. GitHub Pages publica únicamente desde `main`, ramas `release/**` o una ejecución manual autorizada.
 
-La actualización 0.16.0 ejecuta una sola vez un inicio limpio en cada dispositivo: elimina únicamente el almacenamiento local de Fenología y muestra la creación del Administrador principal. No elimina libros, archivos ni datos que ya estén en Google Drive o Sheets. Los accesos y perfiles anteriores deben generarse nuevamente desde el Administrador creado en esta etapa.
+El inicio limpio introducido en 0.16.0 conserva su marcador y no vuelve a ejecutarse al actualizar a 0.17.0. La actualización no elimina registros, accesos, perfiles ni libros de Drive. Los perfiles de sincronización 0.16.0 ya instalados siguen siendo compatibles.
 
-La PWA funciona sin desplegar el backend, pero en ese estado conserva los registros como pendientes locales. Para una prueba real con Drive, instala por separado el contenido de `apps-script/`, registra usuarios de prueba y entrega a cada dispositivo su perfil individual. No uses datos productivos hasta validar un ciclo completo de captura, desconexión, reconexión, archivo semanal, gráfico y limpieza.
+En 0.17.0 el mapa y los gráficos del Supervisor/Administrador consultan la semana confirmada en línea al abrirse y durante la actualización periódica. Los Excel históricos cargados se combinan por UUID, sin reemplazar la base local. El Administrador publica automáticamente una configuración operativa sin credenciales para mantener catálogos, variedades, asignaciones, campañas, roles y estados de usuario al día.
+
+La PWA funciona sin desplegar el backend, pero en ese estado conserva los registros como pendientes locales y no puede propagar la configuración. Para una prueba real con Drive, instala por separado el contenido de `apps-script/`, ejecuta `setupFenologia()` después de actualizar el código, registra usuarios de prueba y entrega a cada dispositivo su perfil individual. No uses datos productivos hasta validar un ciclo completo de catálogo, captura, desconexión, reconexión, desactivación, archivo semanal, mapa, gráfico y limpieza.
 
 ## APK Android de prueba
 

@@ -5,11 +5,11 @@ const root=process.cwd();
 const read=file=>readFile(path.join(root,file),'utf8');
 const assert=(condition,message)=>{if(!condition)throw new Error(message);};
 
-const [packageText,index,updater,bootstrap,worker,evaluation,evaluationFlow,xlsx,supervisor,fileAnalysis,sourceGuard,database,security,admin,syncCore,sync,appsScript,platform,userAccess]=await Promise.all([
+const [packageText,index,updater,bootstrap,worker,evaluation,evaluationFlow,xlsx,supervisor,fileAnalysis,sourceGuard,database,security,admin,syncCore,sync,appsScript,platform,userAccess,map]=await Promise.all([
   read('package.json'),read('index.html'),read('app-updater.js'),read('app-bootstrap.js'),read('sw.js'),read('app-eval.js'),
   read('app-evaluation-flow.js'),read('app-xlsx-workflow.js'),read('app-supervisor.js'),
   read('app-supervisor-file-analysis.js'),read('app-analysis-source-guard.js'),read('app-db.js'),
-  read('app-security.js'),read('app-admin-complete.js'),read('app-sync-core.js'),read('app-sync.js'),read('apps-script/Code.gs'),read('app-platform.js'),read('app-user-access-package.js')
+  read('app-security.js'),read('app-admin-complete.js'),read('app-sync-core.js'),read('app-sync.js'),read('apps-script/Code.gs'),read('app-platform.js'),read('app-user-access-package.js'),read('app-map.js')
 ]);
 const packageInfo=JSON.parse(packageText);
 const version=packageInfo.version;
@@ -72,10 +72,15 @@ assert(userAccess.includes('FenologiaSync.createProfile(values)'),'El asistente 
 assert(admin.includes("SYSTEM_EPOCH = 'fresh-start-v1'")&&userAccess.includes("SYSTEM_EPOCH='fresh-start-v1'"),'Los accesos no pertenecen a la nueva etapa del sistema.');
 assert(admin.includes("payload.systemEpoch!==SYSTEM_EPOCH")&&admin.includes('quedó invalidado por el reinicio'),'La importación todavía permite accesos creados antes del reinicio.');
 assert(admin.includes('id="first-admin-form"')&&admin.includes("id:'ADM-001'")&&admin.includes('Administrador principal'),'Falta la creación guiada del primer Administrador.');
-assert(sync.includes("new Set(['0.16.0'])"),'Los perfiles de sincronización anteriores al reinicio todavía son compatibles.');
+assert(sync.includes("new Set(['0.16.0','0.17.0'])"),'La actualización dejó de aceptar los perfiles 0.16.0 instalados.');
+assert(sync.includes('legacyService:true')&&sync.includes('todavía debe actualizarse a 0.17.0'),'La transición desde el servicio 0.16.0 puede bloquear el envío de evaluaciones.');
+assert(map.includes('getAnalysisRecords')&&!map.includes('records=state.records.filter(recordOk)'),'El mapa no consume el consolidado en línea compartido.');
+assert(sync.includes("['map','charts','sync-monitor']")&&sync.includes('fenologia-remote-snapshot'),'Mapa y gráficos no se actualizan al recibir el consolidado.');
+assert(admin.includes('centralSnapshot')&&admin.includes('applyCentralConfig')&&admin.includes('handleCentralDeactivation'),'La configuración administrativa no puede sincronizarse o aplicar una desactivación central.');
 assert(index.includes('https://script.google.com')&&index.includes('https://script.googleusercontent.com'),'CSP no permite la respuesta firmada de Apps Script.');
 assert(appsScript.includes('LockService.getScriptLock()'),'Apps Script no bloquea escrituras concurrentes.');
 assert(appsScript.includes('REGISTRO_UUID')&&appsScript.includes('BANDEJA_ENTRADA'),'Apps Script no conserva idempotencia y recuperación.');
+assert(appsScript.includes('CONFIG_CENTRAL')&&appsScript.includes('Usuario desactivado.'),'Apps Script no centraliza configuración y desactivaciones.');
 assert(!appsScript.includes('JSON.stringify(body)'),'Apps Script guarda el token sin ocultar en la bandeja de entrada.');
 assert(appsScript.includes("'FENOLOGIA','BIOMETRIA','PARAMETROS_ADICIONALES','METADATOS'"),'Apps Script no administra todas las hojas semanales de datos.');
 

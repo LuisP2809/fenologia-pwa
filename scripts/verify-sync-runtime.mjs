@@ -7,6 +7,8 @@ const settings=new Map();
 const stores={syncQueue:new Map(),syncReceipts:new Map(),syncAlerts:new Map(),syncArchive:new Map()};
 const events=[];
 const downloads=[];
+const appliedConfigurations=[];
+let localCentralSnapshot=null;
 const app={innerHTML:''};
 const document={
   visibilityState:'visible',head:{appendChild(){}},
@@ -17,7 +19,12 @@ const document={
 const windowObject={
   addEventListener(type,listener){events.push({type,listener});},
   dispatchEvent(event){events.push({type:event.type,detail:event.detail,dispatched:true});},
-  FenologiaFileAnalysis:{getChartRecords:()=>[]}
+  FenologiaFileAnalysis:{getChartRecords:()=>[]},
+  FenologiaAdmin:{
+    centralSnapshot:()=>localCentralSnapshot?structuredClone(localCentralSnapshot):null,
+    async applyCentralConfig(snapshot){localCentralSnapshot=structuredClone(snapshot);appliedConfigurations.push(structuredClone(snapshot));return {applied:true};},
+    async handleCentralDeactivation(){state.session=null;return true;}
+  }
 };
 const state={session:{id:'EVA-001',name:'Evaluador 1',role:'Evaluador'},records:[],view:'home',selectedRecordId:null};
 let saveCount=0;
@@ -57,14 +64,15 @@ await windowObject.FenologiaSync.ready;
 const preparedProfile=await windowObject.FenologiaSync.createProfile({
   endpoint:'https://script.google.com/macros/s/PRUEBA/exec',evaluatorId:'EVA-001',evaluator:'Evaluador 1',role:'Evaluador',deviceToken:'123456789012345678901234'
 });
-assert(preparedProfile.version==='0.16.0'&&preparedProfile.evaluatorId==='EVA-001','El asistente no generó el perfil con el usuario autocompletado.');
+assert(preparedProfile.version==='0.17.0'&&preparedProfile.evaluatorId==='EVA-001','El asistente no generó el perfil con el usuario autocompletado.');
 assert(downloads.at(-1)?.name==='Perfil-Sync-EVA-001.json','El asistente no descargó el nombre de perfil esperado.');
 const invalidatedProfile={...preparedProfile,version:'0.15.1'};
 let invalidatedRejected=false;
 try{await windowObject.FenologiaSync.installProfile({size:JSON.stringify(invalidatedProfile).length,text:async()=>JSON.stringify(invalidatedProfile)});}catch{invalidatedRejected=true;}
 assert(invalidatedRejected,'Un perfil anterior al reinicio todavía pudo instalarse.');
-await windowObject.FenologiaSync.installProfile({size:JSON.stringify(preparedProfile).length,text:async()=>JSON.stringify(preparedProfile)});
-assert(windowObject.FenologiaSync.getConfig().deviceToken===preparedProfile.deviceToken,'El perfil 0.16.0 no pudo instalarse.');
+const compatibleProfile={...preparedProfile,version:'0.16.0'};
+await windowObject.FenologiaSync.installProfile({size:JSON.stringify(compatibleProfile).length,text:async()=>JSON.stringify(compatibleProfile)});
+assert(windowObject.FenologiaSync.getConfig().deviceToken===preparedProfile.deviceToken,'El perfil 0.16.0 instalado dejó de ser compatible.');
 let wrongOwnerRejected=false;
 try{await windowObject.FenologiaSync.installProfile({size:100,text:async()=>JSON.stringify({...preparedProfile,evaluatorId:'EVA-999'})});}catch{wrongOwnerRejected=true;}
 assert(wrongOwnerRejected,'El dispositivo aceptó un perfil perteneciente a otro usuario.');
@@ -117,6 +125,17 @@ state.session={id:'ADM-001',name:'Administrador 1',role:'Administrador'};state.v
 assert(app.innerHTML.includes('sync-config-form')&&app.innerHTML.includes('Preparar dispositivo'),'El Administrador no dispone de conexión y del asistente por usuario.');
 assert(!app.innerHTML.includes('id="sync-profile-form"'),'La configuración todavía duplica el formulario manual de perfiles.');
 assert(app.innerHTML.includes('cola pendiente, conflictos y registros sin recibo nunca se eliminan'),'El panel no explica la protección de limpieza.');
+localCentralSnapshot={
+  type:'fenologia-central-config',version:1,systemEpoch:'fresh-start-v1',revision:3,updatedAt:'2026-08-19T12:00:00.000Z',
+  users:[{id:'ADM-001',name:'Administrador 1',role:'Administrador',active:true,permissions:['admin']},{id:'SUP-001',name:'Supervisor 1',role:'Supervisor',active:true,permissions:['map','charts']}],
+  catalog:{lotesAgrupados:{'CAMPO 1':{'FUNDO 1':{M1:['L1']}}},variedadesPorCampo:{'CAMPO 1':['HASS']}},assignments:{L1:['HASS']},campaigns:[],archivedLots:[]
+};
+await windowObject.FenologiaSync.publishCentralConfig(localCentralSnapshot);
+assert(windowObject.FenologiaSync.state.remoteConfig?.revision===3,'El Administrador no publicó la configuración central en el simulador.');
+state.session={id:'SUP-001',name:'Supervisor 1',role:'Supervisor'};
+localCentralSnapshot={...localCentralSnapshot,revision:2,updatedAt:'2026-08-18T12:00:00.000Z'};
+await windowObject.FenologiaSync.refreshCentralConfig();
+assert(appliedConfigurations.at(-1)?.revision===3&&appliedConfigurations.at(-1)?.catalog.variedadesPorCampo['CAMPO 1'][0]==='HASS','El Supervisor no aplicó el catálogo central más reciente.');
 assert(saveCount>0,'Los cambios de estado no se persistieron localmente.');
 
 console.log('Runtime de sincronización validado: cola local, confirmación, edición, conflicto, limpieza y vistas por rol.');

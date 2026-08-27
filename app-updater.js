@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.16.0';
+  const VERSION='0.17.0';
   const RESET_MARKER='fenologia-fresh-start-v1';
   const DATABASE_NAME='fenologia-pwa';
   const LOCAL_KEYS=new Set([

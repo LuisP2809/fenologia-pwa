@@ -1,6 +1,6 @@
 (() => {
-  const VERSION='0.16.0';
-  const COMPATIBLE_PROFILE_VERSIONS=new Set(['0.16.0']);
+  const VERSION='0.17.0';
+  const COMPATIBLE_PROFILE_VERSIONS=new Set(['0.16.0','0.17.0']);
   const CONFIG_KEY='fenologia-sync-config-v1';
   const DEVICE_ID_KEY='fenologia-sync-device-id-v1';
   const ACTIVE_SNAPSHOT_KEY='__ACTIVE_REMOTE_SNAPSHOT__';
@@ -17,10 +17,15 @@
     pendingAlertHours:4,
     driveWarningPercent:70
   };
-  const syncState={ready:false,running:false,lastRunAt:null,lastSuccessAt:null,lastError:null,deviceId:'',queue:[],receipts:[],alerts:[],archive:[],remoteRecords:[],remoteDevices:[],remoteWeeks:[],remoteAlerts:[],remoteDrive:null,timer:null};
+  const syncState={ready:false,running:false,lastRunAt:null,lastSuccessAt:null,lastError:null,deviceId:'',queue:[],receipts:[],alerts:[],archive:[],remoteRecords:[],remoteDevices:[],remoteWeeks:[],remoteAlerts:[],remoteDrive:null,remoteConfig:null,configLastSuccessAt:null,configLastError:null,timer:null};
   let config={...DEFAULT_CONFIG};
   let migrationPromise=null;
   let activeSessionKey='';
+  let previousChartSource=null;
+  let centralPublishPending=null;
+  let centralPublishPromise=null;
+  let analyticsRefreshPromise=null;
+  let analyticsRefreshedAt=0;
 
   const core=()=>window.FenologiaSyncCore;
   const now=()=>new Date().toISOString();
@@ -137,7 +142,7 @@
   function status(){
     const pending=syncState.queue.filter(item=>['pending','sending','confirming','error'].includes(item.status)).length;
     const conflicts=syncState.queue.filter(item=>item.status==='conflict').length;
-    return {ready:syncState.ready,configured:isConfigured(),enabled:config.enabled,pending,conflicts,lastRunAt:syncState.lastRunAt,lastSuccessAt:syncState.lastSuccessAt,lastError:syncState.lastError,transport:config.transport};
+    return {ready:syncState.ready,configured:isConfigured(),enabled:config.enabled,pending,conflicts,lastRunAt:syncState.lastRunAt,lastSuccessAt:syncState.lastSuccessAt,lastError:syncState.lastError,transport:config.transport,centralRevision:Number(syncState.remoteConfig?.revision||0)||null,configLastSuccessAt:syncState.configLastSuccessAt,configLastError:syncState.configLastError};
   }
 
   function isConfigured(){
@@ -247,7 +252,7 @@
   }
 
   async function mockRequest(action,payload={}){
-    const store=(await window.FenologiaDB.getSetting(MOCK_KEY))||{records:{},business:{},devices:{},weeks:{}};
+    const store=(await window.FenologiaDB.getSetting(MOCK_KEY))||{records:{},business:{},devices:{},weeks:{},configuration:null};
     store.records=store.records||{};store.business=store.business||{};store.devices=store.devices||{};store.weeks=store.weeks||{};
     const sessionId=state.session?.id||'LOCAL';
     store.devices[sessionId]={evaluatorId:sessionId,evaluator:state.session?.name||sessionId,lastSeenAt:now(),pending:Number(payload.pending||0),status:'online'};
@@ -270,6 +275,21 @@
     }
     if(action==='snapshot'){
       return {ok:true,records:Object.values(store.records).map(item=>item.payload),devices:Object.values(store.devices),weeks:Object.values(store.weeks),drive:{usedPercent:4,updatedAt:now()}};
+    }
+    if(action==='publish-config'){
+      const snapshot=payload.configuration;
+      const hash=await core().sha256(snapshot);
+      const current=store.configuration;
+      if(current&&Number(snapshot.revision)<Number(current.revision))return {ok:false,message:'La configuración central tiene una revisión más reciente.'};
+      if(current&&Number(snapshot.revision)===Number(current.revision)&&hash!==current.hash)return {ok:false,message:'La revisión central ya existe con otro contenido.'};
+      store.configuration={...snapshot,hash};
+      await window.FenologiaDB.setSetting(MOCK_KEY,store);
+      return {ok:true,status:current?.hash===hash?'duplicate':'published',revision:snapshot.revision,hash};
+    }
+    if(action==='config'){
+      if(!store.configuration)return {ok:true,available:false};
+      const {hash,...configuration}=store.configuration;
+      return {ok:true,available:true,configuration,revision:configuration.revision,hash};
     }
     await window.FenologiaDB.setSetting(MOCK_KEY,store);return {ok:true};
   }
@@ -308,6 +328,98 @@
     return jsonp(config.endpoint,await signedParams('snapshot',range),25000);
   }
 
+  async function transportCentralConfig(){
+    if(config.transport==='mock')return mockRequest('config');
+    const params=await signedParams('config');
+    if(config.transport==='cors'){
+      const url=new URL(config.endpoint);Object.entries(params).forEach(([key,value])=>url.searchParams.set(key,String(value)));
+      const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw new Error(`Consulta de configuración ${response.status}.`);return response.json();
+    }
+    return jsonp(config.endpoint,params,20000);
+  }
+
+  async function rejectCentralResponse(response,fallback){
+    if(response?.ok)return response;
+    const message=response?.message||fallback;
+    if(/usuario desactivado/i.test(message)){
+      await window.FenologiaAdmin?.handleCentralDeactivation?.();
+      showToast('Este usuario fue desactivado por el Administrador.');
+    }
+    throw new Error(message);
+  }
+
+  async function refreshCentralConfig(){
+    if(!isConfigured()||!navigator.onLine||!state.session)return null;
+    try{
+      const received=await transportCentralConfig();
+      if(!received?.ok&&/acción no permitida/i.test(received?.message||'')){
+        syncState.remoteConfig=null;syncState.configLastError='El servicio central todavía debe actualizarse a 0.17.0.';
+        return {ok:true,available:false,legacyService:true};
+      }
+      const response=await rejectCentralResponse(received,'No se pudo consultar la configuración central.');
+      if(!response.available){syncState.remoteConfig=null;syncState.configLastSuccessAt=now();syncState.configLastError=null;return response;}
+      const snapshot=response.configuration;
+      if(!snapshot||Number(response.revision)!==Number(snapshot.revision))throw new Error('La configuración central llegó incompleta.');
+      syncState.remoteConfig={revision:Number(response.revision),hash:response.hash||'',updatedAt:snapshot.updatedAt||response.updatedAt||null};
+      const local=window.FenologiaAdmin?.centralSnapshot?.();
+      const localHash=local?await core().sha256(local):'';
+      const same=Boolean(local&&response.hash&&localHash===response.hash);
+      if(isAdmin()&&local&&Number(local.revision)===Number(snapshot.revision)&&response.hash&&localHash!==response.hash)throw new Error('Existe un conflicto de configuración entre Administradores. Actualiza y revisa antes de volver a guardar.');
+      if(!same)await window.FenologiaAdmin?.applyCentralConfig?.(snapshot);
+      syncState.configLastSuccessAt=now();syncState.configLastError=null;
+      return response;
+    }catch(error){syncState.configLastError=error.message||String(error);throw error;}
+  }
+
+  async function publishCentralConfig(snapshot){
+    if(!snapshot||!isAdmin())return null;
+    if(!isConfigured()||!navigator.onLine)throw new Error('La configuración central se publicará cuando vuelva la conexión.');
+    const hash=await core().sha256(snapshot);
+    const envelope={action:'publish-config',version:VERSION,deviceId:syncState.deviceId,evaluatorId:state.session?.id||'',deviceToken:config.deviceToken,configuration:snapshot};
+    let result;
+    if(config.transport==='mock')result=await mockRequest('publish-config',envelope);
+    else if(config.transport==='cors'){
+      const response=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(envelope),cache:'no-store'});
+      if(!response.ok)throw new Error(`Publicación de configuración ${response.status}.`);result=await response.json();
+    }else{
+      await fetch(config.endpoint,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(envelope),cache:'no-store'});
+      for(let attempt=0;attempt<4;attempt++){
+        await new Promise(resolve=>setTimeout(resolve,800+attempt*600));
+        const check=await transportCentralConfig();
+        if(check?.ok&&check.available&&check.hash===hash){result={ok:true,status:'confirmed',revision:check.revision,hash:check.hash};break;}
+        if(check&&!check.ok)await rejectCentralResponse(check,'No se pudo confirmar la configuración central.');
+      }
+      if(!result)throw new Error('Google recibió la configuración, pero su confirmación sigue pendiente.');
+    }
+    await rejectCentralResponse(result,'No se pudo publicar la configuración central.');
+    syncState.remoteConfig={revision:Number(result.revision||snapshot.revision),hash:result.hash||hash,updatedAt:snapshot.updatedAt};
+    syncState.configLastSuccessAt=now();syncState.configLastError=null;
+    window.dispatchEvent(new CustomEvent('fenologia-central-config-published',{detail:syncState.remoteConfig}));
+    return result;
+  }
+
+  function queueCentralPublish(snapshot=window.FenologiaAdmin?.centralSnapshot?.()){
+    if(!snapshot||!isAdmin())return Promise.resolve(null);
+    centralPublishPending=snapshot;
+    if(centralPublishPromise)return centralPublishPromise;
+    centralPublishPromise=(async()=>{
+      while(centralPublishPending){
+        const next=centralPublishPending;centralPublishPending=null;
+        try{await publishCentralConfig(next);}catch(error){syncState.configLastError=error.message||String(error);if(!navigator.onLine)centralPublishPending=next;break;}
+      }
+    })().finally(()=>{centralPublishPromise=null;window.dispatchEvent(new CustomEvent('fenologia-sync-status',{detail:status()}));});
+    return centralPublishPromise;
+  }
+
+  async function synchronizeCentralConfig(){
+    const response=await refreshCentralConfig();
+    if(isAdmin()){
+      const local=window.FenologiaAdmin?.centralSnapshot?.();
+      if(local&&(!response?.available||Number(local.revision)>Number(response.revision||0)))queueCentralPublish(local);
+    }
+    return response;
+  }
+
   async function acceptResult(entry,result){
     const record=recordById(entry.recordId);
     if(['accepted','duplicate'].includes(result.status)){
@@ -331,6 +443,8 @@
     syncState.running=true;syncState.lastRunAt=now();syncState.lastError=null;
     try{
       await loadStores();
+      await synchronizeCentralConfig();
+      if(!state.session)return status();
       const currentTime=Date.now();
       const due=syncState.queue.filter(item=>
         ['pending','error','confirming','sending'].includes(item.status)&&
@@ -371,13 +485,16 @@
 
   async function refreshRemote(){
     if(!isConfigured()||!navigator.onLine||!state.session||!isSupervisor()) return null;
+    await refreshCentralConfig();
+    if(!state.session)return null;
     const snapshot=await transportSnapshot();
-    if(!snapshot?.ok) throw new Error(snapshot?.message||'No se pudo consultar la base central.');
+    await rejectCentralResponse(snapshot,'No se pudo consultar la base central.');
     syncState.remoteRecords=Array.isArray(snapshot.records)?snapshot.records:[];
     syncState.remoteDevices=Array.isArray(snapshot.devices)?snapshot.devices:[];
     syncState.remoteWeeks=Array.isArray(snapshot.weeks)?snapshot.weeks:[];
     syncState.remoteAlerts=Array.isArray(snapshot.alerts)?snapshot.alerts:[];
     syncState.remoteDrive=snapshot.drive||null;
+    analyticsRefreshedAt=Date.now();
     syncState.lastSuccessAt=now();
     await window.FenologiaDB.putSyncItem('syncArchive',{
       weekKey:ACTIVE_SNAPSHOT_KEY,campaign:'active',status:'active-cache',updatedAt:now(),
@@ -386,6 +503,7 @@
     if(syncState.remoteDrive&&Number(syncState.remoteDrive.usedPercent)>=config.driveWarningPercent){
       await createAlert('drive-capacity',`Drive alcanzó ${Number(syncState.remoteDrive.usedPercent).toFixed(1)} % de uso.`,{usedPercent:syncState.remoteDrive.usedPercent});
     }
+    window.dispatchEvent(new CustomEvent('fenologia-remote-snapshot',{detail:{records:syncState.remoteRecords.length,generatedAt:snapshot.generatedAt||now()}}));
     return snapshot;
   }
 
@@ -444,6 +562,9 @@
   }
 
   function adminSyncView(){
+    const localRevision=Number(window.FenologiaAdmin?.centralSnapshot?.()?.revision||0)||null;
+    const centralRevision=Number(syncState.remoteConfig?.revision||0)||null;
+    const configurationState=syncState.configLastError?`Requiere revisión: ${syncState.configLastError}`:centralRevision&&localRevision===centralRevision?'Configuración operativa confirmada en Drive':'Se confirmará automáticamente al tener conexión';
     app.innerHTML=shell(`${titleBlock('ADMINISTRADOR','Seguridad y sincronización','Configura la conexión, retención local y controles operativos.')}
       <form class="panel sync-config-form" id="sync-config-form">
         <div class="panel-head"><div><span>CONEXIÓN CENTRAL</span><h2>Google Apps Script</h2><p>La URL y el token se guardan solamente en este dispositivo.</p></div></div>
@@ -459,6 +580,7 @@
           <label class="sync-check"><input name="cleanupEnabled" type="checkbox" ${config.cleanupEnabled?'checked':''}><span>Limpiar automáticamente solo registros confirmados y fuera del periodo local</span></label>
         </div><div class="form-actions"><button class="primary" type="submit">Guardar configuración local</button><button class="secondary" type="button" id="test-sync-connection">Probar conexión</button></div>
       </form>
+      <section class="panel sync-protection"><div><span>CONFIGURACIÓN OPERATIVA</span><h2>${centralRevision?`Revisión central ${centralRevision}`:'Pendiente de primera publicación'}</h2><p>${esc(configurationState)} Los catálogos, asignaciones, roles y estados de usuario se actualizan sin compartir DNI/PIN ni tokens.</p></div></section>
       <section class="panel sync-protection"><div><span>PREPARACIÓN POR USUARIO</span><h2>Acceso y sincronización en un solo asistente</h2><p>Abre “Usuarios y roles” y utiliza <b>Preparar dispositivo</b>. El ID, nombre y rol se completan automáticamente para evitar perfiles cruzados.</p><div class="form-actions"><button class="secondary" type="button" data-view="users">Abrir Usuarios y roles</button></div></div></section>
       <section class="panel sync-protection"><b>Protección obligatoria</b><p>No existe permiso de limpieza para Evaluadores. La cola pendiente, conflictos y registros sin recibo nunca se eliminan.</p></section>`);
   }
@@ -528,6 +650,24 @@
     return migrationPromise;
   }
 
+  function analysisRecords(){
+    const historical=previousChartSource?previousChartSource():[];
+    const active=isEvaluator()?state.records:syncState.remoteRecords;
+    return core().deduplicateRecords([active,historical]);
+  }
+
+  function refreshAnalyticsIfNeeded(force=false){
+    if(!state.session||!isSupervisor()||!isConfigured()||!navigator.onLine||!['map','charts'].includes(state.view))return Promise.resolve(null);
+    if(!force&&Date.now()-analyticsRefreshedAt<5000)return Promise.resolve(null);
+    if(analyticsRefreshPromise)return analyticsRefreshPromise;
+    const requestedView=state.view;
+    analyticsRefreshPromise=refreshRemote().then(result=>{
+      if(result&&state.session&&state.view===requestedView)render();
+      return result;
+    }).catch(error=>{syncState.lastError=error.message||String(error);return null;}).finally(()=>{analyticsRefreshPromise=null;});
+    return analyticsRefreshPromise;
+  }
+
   function activateSessionSync(){
     const next=state.session?`${state.session.id}|${state.session.role}`:'';
     if(next===activeSessionKey)return;
@@ -535,14 +675,16 @@
     if(!next)return;
     setTimeout(()=>{
       if(isEvaluator())ensureEvaluatorQueue().then(()=>processQueue());
-      else if(isSupervisor())refreshRemote().then(()=>{if(['charts','sync-monitor'].includes(state.view))render();}).catch(()=>{});
+      else if(isSupervisor())refreshRemote().then(()=>{if(['map','charts','sync-monitor'].includes(state.view))render();}).catch(()=>{});
     },0);
   }
 
   function schedule(){
     if(syncState.timer) clearInterval(syncState.timer);
     syncState.timer=setInterval(()=>{
-      if(document.visibilityState==='visible'&&navigator.onLine){processQueue();if(isSupervisor())refreshRemote().then(()=>{if(['charts','sync-monitor'].includes(state.view))render();}).catch(()=>{});}
+      if(document.visibilityState!=='visible'||!navigator.onLine)return;
+      if(isSupervisor())refreshRemote().then(()=>{if(['map','charts','sync-monitor'].includes(state.view))render();}).catch(()=>{});
+      else processQueue();
     },config.refreshSeconds*1000);
   }
 
@@ -563,22 +705,19 @@
     else previousRender();
     decorateRenderedView();
     activateSessionSync();
+    refreshAnalyticsIfNeeded();
   };
 
-  const previousChartSource=window.FenologiaFileAnalysis?.getChartRecords?.bind(window.FenologiaFileAnalysis);
+  previousChartSource=window.FenologiaFileAnalysis?.getChartRecords?.bind(window.FenologiaFileAnalysis);
   if(window.FenologiaFileAnalysis){
-    window.FenologiaFileAnalysis.getChartRecords=()=>{
-      const historical=previousChartSource?previousChartSource():[];
-      const active=isEvaluator()?state.records:syncState.remoteRecords;
-      return core().deduplicateRecords([active,historical]);
-    };
+    window.FenologiaFileAnalysis.getChartRecords=analysisRecords;
   }
 
   document.addEventListener('click',event=>{
     if(isEvaluator()&&event.target.closest('[data-view="export"],#clear-records')){
       event.preventDefault();event.stopImmediatePropagation();state.view='sync-status';render();return;
     }
-    if(event.target.closest('#sync-now')){processQueue().then(()=>{render();showToast('Sincronización revisada.');});return;}
+    if(event.target.closest('#sync-now')){processQueue().then(result=>{render();showToast(result.lastError||'Sincronización revisada.');}).catch(error=>showToast(error.message));return;}
     if(event.target.closest('#install-sync-profile')){document.querySelector('#sync-profile-file')?.click();return;}
     if(event.target.closest('#refresh-sync-monitor')){refreshRemote().then(()=>{render();showToast('Panel actualizado.');}).catch(error=>showToast(error.message));return;}
     if(event.target.closest('#test-sync-connection')){processQueue().then(result=>showToast(result.lastError||'Prueba de conexión finalizada.'));return;}
@@ -601,11 +740,12 @@
     event.preventDefault();event.stopImmediatePropagation();
     const data=Object.fromEntries(new FormData(event.target));
     data.enabled=data.enabled==='true';data.cleanupEnabled=event.target.cleanupEnabled.checked;
-    persistConfig(data).then(()=>{showToast('Configuración local guardada. No se publicó ningún servicio.');render();}).catch(error=>showToast(error.message||'No se pudo guardar la configuración.'));
+    persistConfig(data).then(()=>{if(isAdmin())queueCentralPublish();showToast('Configuración local guardada; la configuración operativa se sincronizará automáticamente.');render();}).catch(error=>showToast(error.message||'No se pudo guardar la configuración.'));
   },true);
 
-  window.addEventListener('online',()=>processQueue());
+  window.addEventListener('online',()=>{processQueue();if(centralPublishPending)queueCentralPublish(centralPublishPending);});
   window.addEventListener('fenologia-db-external-change',()=>loadStores().then(decorateRenderedView));
+  window.addEventListener('fenologia-admin-config-change',event=>{if(isAdmin())queueCentralPublish(event.detail?.snapshot);});
 
   async function initialize(){
     await loadStores();syncState.ready=true;schedule();decorateRenderedView();
@@ -614,5 +754,5 @@
     window.dispatchEvent(new CustomEvent('fenologia-sync-ready',{detail:status()}));
   }
 
-  window.FenologiaSync={VERSION,initialize,ready:initialize(),status,getConfig:()=>({...config}),saveConfig:persistConfig,createProfile:downloadProfile,installProfile,enqueueRecord,processQueue,refreshRemote,runAutomaticCleanup,resolveRemoteAlert,getChartRecords:()=>core().deduplicateRecords([isEvaluator()?state.records:syncState.remoteRecords]),state:syncState};
+  window.FenologiaSync={VERSION,initialize,ready:initialize(),status,getConfig:()=>({...config}),saveConfig:persistConfig,createProfile:downloadProfile,installProfile,enqueueRecord,processQueue,refreshRemote,refreshCentralConfig,publishCentralConfig,runAutomaticCleanup,resolveRemoteAlert,getChartRecords:analysisRecords,getAnalysisRecords:analysisRecords,state:syncState};
 })();

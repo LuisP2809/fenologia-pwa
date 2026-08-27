@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.16.0', MAP_PATH='data/lotes-mapa.geojson', W=1200, H=760, PAD=32;
+  const VERSION='0.17.0', MAP_PATH='data/lotes-mapa.geojson', W=1200, H=760, PAD=32;
   const iso=(d=new Date())=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
   const m={data:null,loading:null,error:'',from:iso(),to:iso(),field:'',farm:'',module:'',variety:'',evaluator:'',lot:'',zoom:1,x:0,y:0,drag:null};
   const roles=()=>['Evaluador','Supervisor','Administrador'].includes(state.session?.role);
@@ -8,6 +8,7 @@
   const active=()=>m.data?.features?.filter(f=>f.properties?.ACTIVO)||[];
   const refs=()=>m.data?.features?.filter(f=>!f.properties?.ACTIVO)||[];
   const allLots=()=>new Set(active().map(f=>f.properties.LOTE));
+  const sourceRecords=()=>window.FenologiaSync?.getAnalysisRecords?.()||state.records;
   const opt=(values,current,all='Todos')=>`<option value="">${all}</option>${values.map(v=>`<option value="${esc(v)}" ${v===current?'selected':''}>${esc(v)}</option>`).join('')}`;
 
   function catalogMetadata(){
@@ -141,14 +142,14 @@
     return true;
   }
   function model(){
-    const visible=active().filter(featureOk), records=state.records.filter(recordOk), byLot=new Map(), visibleSet=new Set(visible.map(f=>f.properties.LOTE));
+    const visible=active().filter(featureOk), records=sourceRecords().filter(recordOk), byLot=new Map(), visibleSet=new Set(visible.map(f=>f.properties.LOTE));
     records.forEach(r=>{const lot=String(r.lot||'').trim();if(!lot)return;if(!byLot.has(lot))byLot.set(lot,[]);byLot.get(lot).push(r);});
     const evaluated=[...byLot.keys()].filter(l=>visibleSet.has(l));
     return {visible,references:m.field?[]:refs(),records,byLot,evaluated,pending:Math.max(0,visible.length-evaluated.length),unmatched:records.filter(r=>r.lot&&!allLots().has(r.lot))};
   }
   function evaluators(){
     const base=users.filter(u=>u.role==='Evaluador').map(u=>({v:u.id,l:u.name}));
-    state.records.forEach(r=>{const v=r.evaluatorId||r.evaluator,l=r.evaluator||r.evaluatorId;if(v&&!base.some(x=>x.v===v))base.push({v,l});});
+    sourceRecords().forEach(r=>{const v=r.evaluatorId||r.evaluator,l=r.evaluator||r.evaluatorId;if(v&&!base.some(x=>x.v===v))base.push({v,l});});
     return base.sort((a,b)=>a.l.localeCompare(b.l,'es'));
   }
   function filters(){

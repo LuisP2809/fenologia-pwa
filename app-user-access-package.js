@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.16.0';
+  const VERSION='0.17.0';
   const SYSTEM_EPOCH='fresh-start-v1';
   const CLEANUP_ADMIN_KEY='fenologia-cleanup-admin-profiles-v1';
   const CONFIG_KEY='admin-config-v1';

@@ -1,6 +1,6 @@
 # Modelo de seguridad local y central
 
-Fenología 0.16.0 continúa siendo *offline-first*: primero confirma el guardado en el dispositivo y después sincroniza. El servicio de Apps Script añade autoridad central cuando está instalado; sin ese despliegue, la aplicación permanece en modo local protegido.
+Fenología 0.17.0 continúa siendo *offline-first*: primero confirma el guardado en el dispositivo y después sincroniza. El servicio de Apps Script añade autoridad central cuando está instalado; sin ese despliegue, la aplicación permanece en modo local protegido.
 
 ## Controles implementados
 
@@ -10,6 +10,8 @@ Fenología 0.16.0 continúa siendo *offline-first*: primero confirma el guardado
 - Vinculación de la primera identidad firmante y rechazo de cambios posteriores no autorizados.
 - Cola y recibos separados en IndexedDB; una copia local no se elimina sin estado confirmado y coincidencia de hash.
 - Tokens individuales: el servidor conserva únicamente su hash y las consultas se firman con HMAC, timestamp y nonce.
+- La configuración central excluye PIN/DNI, hashes de credenciales, sales y tokens; solamente distribuye datos operativos.
+- Los cambios concurrentes de una misma revisión administrativa se bloquean como conflicto en lugar de sobrescribirse silenciosamente.
 - Bloqueo global de Apps Script, UUID, clave lógica, hash, revisión, bandeja de entrada y auditoría central.
 - Política CSP, límites de tamaño y validación estructural de JSON, GeoJSON y XLSX.
 - Etapa de sistema identificada: los accesos y perfiles anteriores al inicio limpio 0.16.0 son rechazados.
@@ -22,7 +24,7 @@ Si después del reinicio no existen usuarios, la pantalla inicial permite crear 
 
 ## Límites y operación
 
-Una persona con control completo del dispositivo todavía puede alterar su almacenamiento o el código instalado, pero no puede escribir en la base central sin un token activo. La revocación central se aplica en el siguiente contacto; un equipo sin conexión puede seguir capturando localmente, pero no consolidar datos revocados.
+Una persona con control completo del dispositivo todavía puede alterar su almacenamiento o el código instalado, pero no puede escribir en la base central sin un token activo. La revocación central se aplica en el siguiente contacto y cierra la sesión local; un equipo sin conexión puede continuar temporalmente con la sesión y los datos que ya tenía, pero no puede consolidar registros después de la revocación. Las evaluaciones locales no se borran por desactivar un usuario.
 
 Apps Script se ejecuta con la cuenta propietaria y sus cuotas. Los tokens no deben guardarse en el repositorio ni compartirse entre evaluadores. El libro de control debe mantenerse privado y la PWA solo debe aceptar perfiles individuales. La URL pública del web app no reemplaza la autenticación del dispositivo.
 
