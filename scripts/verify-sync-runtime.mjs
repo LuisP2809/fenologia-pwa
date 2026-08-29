@@ -64,13 +64,13 @@ await windowObject.FenologiaSync.ready;
 const preparedProfile=await windowObject.FenologiaSync.createProfile({
   endpoint:'https://script.google.com/macros/s/PRUEBA/exec',evaluatorId:'EVA-001',evaluator:'Evaluador 1',role:'Evaluador',deviceToken:'123456789012345678901234'
 });
-assert(preparedProfile.version==='0.17.0'&&preparedProfile.evaluatorId==='EVA-001','El asistente no generó el perfil con el usuario autocompletado.');
+assert(preparedProfile.version==='0.18.0'&&preparedProfile.evaluatorId==='EVA-001','El núcleo no genera credenciales de recuperación 0.18.0.');
 assert(downloads.at(-1)?.name==='Perfil-Sync-EVA-001.json','El asistente no descargó el nombre de perfil esperado.');
-const invalidatedProfile={...preparedProfile,version:'0.15.1'};
+const invalidatedProfile={...preparedProfile,version:'0.17.0'};
 let invalidatedRejected=false;
 try{await windowObject.FenologiaSync.installProfile({size:JSON.stringify(invalidatedProfile).length,text:async()=>JSON.stringify(invalidatedProfile)});}catch{invalidatedRejected=true;}
 assert(invalidatedRejected,'Un perfil anterior al reinicio todavía pudo instalarse.');
-const compatibleProfile={...preparedProfile,version:'0.16.0'};
+const compatibleProfile={...preparedProfile,version:'0.18.0'};
 await windowObject.FenologiaSync.installProfile({size:JSON.stringify(compatibleProfile).length,text:async()=>JSON.stringify(compatibleProfile)});
 assert(windowObject.FenologiaSync.getConfig().deviceToken===preparedProfile.deviceToken,'El perfil 0.16.0 instalado dejó de ser compatible.');
 let wrongOwnerRejected=false;
@@ -122,16 +122,20 @@ await events.find(event=>event.type==='fenologia-db-external-change'&&event.list
 assert(windowObject.FenologiaSync.state.remoteRecords.length===1,'El caché offline no restauró la semana activa del Supervisor.');
 
 state.session={id:'ADM-001',name:'Administrador 1',role:'Administrador'};state.view='sync-control';context.render();
-assert(app.innerHTML.includes('sync-config-form')&&app.innerHTML.includes('Preparar dispositivo'),'El Administrador no dispone de conexión y del asistente por usuario.');
+assert(app.innerHTML.includes('sync-config-form')&&app.innerHTML.includes('QR y código temporal'),'El Administrador no dispone de conexión y activación por usuario.');
 assert(!app.innerHTML.includes('id="sync-profile-form"'),'La configuración todavía duplica el formulario manual de perfiles.');
 assert(app.innerHTML.includes('cola pendiente, conflictos y registros sin recibo nunca se eliminan'),'El panel no explica la protección de limpieza.');
 localCentralSnapshot={
-  type:'fenologia-central-config',version:1,systemEpoch:'fresh-start-v1',revision:3,updatedAt:'2026-08-19T12:00:00.000Z',
-  users:[{id:'ADM-001',name:'Administrador 1',role:'Administrador',active:true,permissions:['admin']},{id:'SUP-001',name:'Supervisor 1',role:'Supervisor',active:true,permissions:['map','charts']}],
+  type:'fenologia-central-config',version:1,systemEpoch:'fresh-start-v2',revision:3,updatedAt:'2026-08-19T12:00:00.000Z',
+  users:[{id:'ADM-001',username:'admin',name:'Administrador 1',role:'Administrador',active:true,permissions:['admin']},{id:'SUP-001',username:'supervisor1',name:'Supervisor 1',role:'Supervisor',active:true,permissions:['map','charts']}],
   catalog:{lotesAgrupados:{'CAMPO 1':{'FUNDO 1':{M1:['L1']}}},variedadesPorCampo:{'CAMPO 1':['HASS']}},assignments:{L1:['HASS']},campaigns:[],archivedLots:[]
 };
 await windowObject.FenologiaSync.publishCentralConfig(localCentralSnapshot);
 assert(windowObject.FenologiaSync.state.remoteConfig?.revision===3,'El Administrador no publicó la configuración central en el simulador.');
+const appliedBeforePending=appliedConfigurations.length;
+state.session={id:'EVA-099',name:'Evaluador recién activado',role:'Evaluador'};
+const pendingUser=await windowObject.FenologiaSync.refreshCentralConfig();
+assert(pendingUser.pendingUser===true&&appliedConfigurations.length===appliedBeforePending&&state.session?.id==='EVA-099','Una activación rápida fue eliminada antes de que el Administrador publicara el directorio central.');
 state.session={id:'SUP-001',name:'Supervisor 1',role:'Supervisor'};
 localCentralSnapshot={...localCentralSnapshot,revision:2,updatedAt:'2026-08-18T12:00:00.000Z'};
 await windowObject.FenologiaSync.refreshCentralConfig();

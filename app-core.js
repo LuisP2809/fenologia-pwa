@@ -83,10 +83,10 @@ function loginView(){
       <div class="hero-points"><span>${icons.check} Trabajo offline</span><span>${icons.check} Datos por rol</span><span>${icons.check} Exportación Excel</span></div>
     </section>
     <section class="login-card">
-      <div><span class="eyebrow green">ACCESO SEGURO</span><h2>Bienvenido</h2><p>Ingresa con el nombre y DNI registrados.</p></div>
+      <div><span class="eyebrow green">ACCESO SEGURO</span><h2>Bienvenido</h2><p>Ingresa con tu usuario y PIN.</p></div>
       <form id="login-form">
-        <label>Nombre completo<input name="name" autocomplete="username" required></label>
-        <label>DNI / PIN<input name="pin" inputmode="numeric" maxlength="8" autocomplete="current-password" required></label>
+        <label>Usuario<input name="name" autocomplete="username" required></label>
+        <label>PIN<input name="pin" type="password" inputmode="numeric" minlength="6" maxlength="12" autocomplete="current-password" required></label>
         <button class="primary wide">Ingresar al sistema <span>→</span></button>
       </form>
       ${developmentMode?'<div class="demo-note"><b>Entorno local de desarrollo</b><span>Las cuentas locales no se incluyen en producción.</span></div>':''}

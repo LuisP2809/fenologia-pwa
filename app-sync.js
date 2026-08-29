@@ -1,6 +1,6 @@
 (() => {
-  const VERSION='0.17.0';
-  const COMPATIBLE_PROFILE_VERSIONS=new Set(['0.16.0','0.17.0']);
+  const VERSION='0.18.0';
+  const COMPATIBLE_PROFILE_VERSIONS=new Set(['0.18.0']);
   const CONFIG_KEY='fenologia-sync-config-v1';
   const DEVICE_ID_KEY='fenologia-sync-device-id-v1';
   const ACTIVE_SNAPSHOT_KEY='__ACTIVE_REMOTE_SNAPSHOT__';
@@ -9,7 +9,7 @@
   const DEFAULT_CONFIG={
     enabled:false,
     transport:'apps-script',
-    endpoint:'',
+    endpoint:'https://script.google.com/macros/s/AKfycby4c2t4QzQsUy9_OdHA7MF8hmVknbbzDwrVvSiL0yj5KNkK4eZ02CtzfWjWqlWm5tSd/exec',
     deviceToken:'',
     retentionWeeks:1,
     cleanupEnabled:true,
@@ -353,13 +353,18 @@
     try{
       const received=await transportCentralConfig();
       if(!received?.ok&&/acción no permitida/i.test(received?.message||'')){
-        syncState.remoteConfig=null;syncState.configLastError='El servicio central todavía debe actualizarse a 0.17.0.';
+        syncState.remoteConfig=null;syncState.configLastError='El servicio central todavía debe actualizarse a 0.18.0.';
         return {ok:true,available:false,legacyService:true};
       }
       const response=await rejectCentralResponse(received,'No se pudo consultar la configuración central.');
       if(!response.available){syncState.remoteConfig=null;syncState.configLastSuccessAt=now();syncState.configLastError=null;return response;}
       const snapshot=response.configuration;
       if(!snapshot||Number(response.revision)!==Number(snapshot.revision))throw new Error('La configuración central llegó incompleta.');
+      const currentId=cleanText(state.session?.id).toUpperCase();
+      if(!isAdmin()&&!snapshot.users?.some(user=>cleanText(user.id).toUpperCase()===currentId)){
+        syncState.configLastSuccessAt=now();syncState.configLastError=null;
+        return {...response,pendingUser:true};
+      }
       syncState.remoteConfig={revision:Number(response.revision),hash:response.hash||'',updatedAt:snapshot.updatedAt||response.updatedAt||null};
       const local=window.FenologiaAdmin?.centralSnapshot?.();
       const localHash=local?await core().sha256(local):'';
@@ -545,7 +550,7 @@
     app.innerHTML=shell(`${titleBlock('SINCRONIZACIÓN','Estado de tus evaluaciones','El guardado local nunca espera a Drive.',`<button class="primary" id="sync-now" ${!navigator.onLine?'disabled':''}>↻ Sincronizar ahora</button>`)}
       <section class="metrics-grid">${metric(current.pending,'Pendientes',icons.sync)}${metric(current.conflicts,'Revisión necesaria',icons.alert)}${metric(syncState.receipts.length,'Confirmadas',icons.check)}${metric(navigator.onLine?'En línea':'Sin conexión','Conectividad',icons.cloud)}</section>
       ${pendingTooLong?`<section class="panel sync-warning"><b>Hay registros pendientes desde hace varias horas</b><p>No se borraron ni se perdieron. Conéctate a internet y usa “Sincronizar ahora”. El Supervisor verá el último estado que este celular haya alcanzado a comunicar.</p></section>`:''}
-      ${!isConfigured()?'<section class="panel sync-warning"><b>Sincronización central aún no configurada</b><p>Los registros continúan protegidos en este celular. Instala el perfil individual entregado por el Administrador antes de la prueba con Drive.</p><div class="form-actions"><button class="secondary" type="button" id="install-sync-profile">Instalar perfil</button><input id="sync-profile-file" type="file" accept="application/json,.json" hidden></div></section>':''}
+      ${!isConfigured()?'<section class="panel sync-warning"><b>Sincronización central aún no configurada</b><p>Activa este dispositivo con el QR o código entregado por el Administrador.</p></section>':''}
       <section class="panel"><div class="panel-head"><div><span>COLA LOCAL</span><h2>Registros recientes</h2><p>Una evaluación solamente se retira del celular después de recibir confirmación.</p></div></div>
       <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Lote</th><th>Planta</th><th>Estado</th></tr></thead><tbody>${rows.map(record=>`<tr><td>${esc(record.date)}</td><td>${esc(record.lot)}</td><td>${esc(record.plant)}</td><td>${syncBadge(record)}</td></tr>`).join('')||'<tr><td colspan="4">Sin registros locales.</td></tr>'}</tbody></table></div></section>`);
   }
@@ -554,7 +559,7 @@
     const current=status();const devices=syncState.remoteDevices;const alerts=openAlerts();
     app.innerHTML=shell(`${titleBlock('SUPERVISIÓN','Equipo y sincronización','Monitorea confirmaciones y alertas sin modificar la base.',`<button class="primary" id="refresh-sync-monitor" ${!navigator.onLine?'disabled':''}>Actualizar</button>`)}
       <section class="metrics-grid">${metric(syncState.remoteRecords.length,'Evaluaciones de la semana',icons.clipboard)}${metric(current.pending,'Pendientes locales',icons.sync)}${metric(alerts.length,'Alertas abiertas',icons.alert)}${metric(syncState.remoteWeeks.length,'Semanas disponibles',icons.file)}</section>
-      ${!isConfigured()?'<section class="panel sync-warning"><b>Servicio todavía no conectado</b><p>Instala el perfil individual del Supervisor para iniciar la prueba con la base central.</p><div class="form-actions"><button class="secondary" type="button" id="install-sync-profile">Instalar perfil</button><input id="sync-profile-file" type="file" accept="application/json,.json" hidden></div></section>':''}
+      ${!isConfigured()?'<section class="panel sync-warning"><b>Servicio todavía no conectado</b><p>Activa este dispositivo con el QR o código entregado por el Administrador.</p></section>':''}
       <section class="panel"><div class="panel-head"><div><span>DISPOSITIVOS</span><h2>Estado del equipo</h2></div></div><div class="sync-device-grid">${devices.map(device=>`<article><b>${esc(device.evaluator||device.evaluatorId)}</b><span>${esc(device.pending||0)} pendiente(s)</span><small>Último contacto: ${device.lastSeenAt?new Date(device.lastSeenAt).toLocaleString('es-PE'):'Sin contacto'}</small></article>`).join('')||'<p>Aún no hay dispositivos sincronizados.</p>'}</div></section>
       <section class="panel"><div class="panel-head"><div><span>ARCHIVOS SEMANALES</span><h2>Histórico disponible en Drive</h2><p>Los gráficos activos usan la semana actual. Para otras semanas puedes abrir el archivo o cargarlo en Archivos históricos.</p></div></div><div class="table-wrap"><table><thead><tr><th>Semana</th><th>Registros</th><th>Capacidad</th><th></th></tr></thead><tbody>${syncState.remoteWeeks.map(week=>`<tr><td><b>${esc(week.yearWeek||week.weekKey)}</b><small>${esc(week.campaign||'')}</small></td><td>${esc(week.recordCount||0)}</td><td>${Number(week.cellPercent||0).toFixed(1)} %</td><td>${week.url?`<a class="secondary sync-file-link" href="${esc(week.url)}" target="_blank" rel="noopener noreferrer">Abrir</a>`:'—'}</td></tr>`).join('')||'<tr><td colspan="4">Aún no hay archivos semanales.</td></tr>'}</tbody></table></div></section>
       ${syncState.remoteDrive?`<section class="panel sync-drive"><div><span>ESPACIO DE DRIVE</span><h2>${syncState.remoteDrive.usedPercent==null?'Capacidad no disponible':`${Number(syncState.remoteDrive.usedPercent).toFixed(1)} % utilizado`}</h2><p>${formatBytes(syncState.remoteDrive.usedBytes)} de ${formatBytes(syncState.remoteDrive.limitBytes)}. Los archivos eliminados liberan espacio después de vaciar la papelera.</p></div></section>`:''}
@@ -581,7 +586,7 @@
         </div><div class="form-actions"><button class="primary" type="submit">Guardar configuración local</button><button class="secondary" type="button" id="test-sync-connection">Probar conexión</button></div>
       </form>
       <section class="panel sync-protection"><div><span>CONFIGURACIÓN OPERATIVA</span><h2>${centralRevision?`Revisión central ${centralRevision}`:'Pendiente de primera publicación'}</h2><p>${esc(configurationState)} Los catálogos, asignaciones, roles y estados de usuario se actualizan sin compartir DNI/PIN ni tokens.</p></div></section>
-      <section class="panel sync-protection"><div><span>PREPARACIÓN POR USUARIO</span><h2>Acceso y sincronización en un solo asistente</h2><p>Abre “Usuarios y roles” y utiliza <b>Preparar dispositivo</b>. El ID, nombre y rol se completan automáticamente para evitar perfiles cruzados.</p><div class="form-actions"><button class="secondary" type="button" data-view="users">Abrir Usuarios y roles</button></div></div></section>
+      <section class="panel sync-protection"><div><span>ACTIVACIÓN POR USUARIO</span><h2>QR y código temporal en un solo paso</h2><p>Abre “Usuarios y roles”, crea el usuario y comparte su QR, enlace o código de un solo uso.</p><div class="form-actions"><button class="secondary" type="button" data-view="users">Abrir Usuarios y roles</button></div></div></section>
       <section class="panel sync-protection"><b>Protección obligatoria</b><p>No existe permiso de limpieza para Evaluadores. La cola pendiente, conflictos y registros sin recibo nunca se eliminan.</p></section>`);
   }
 

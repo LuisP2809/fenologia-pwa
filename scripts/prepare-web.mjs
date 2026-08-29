@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const root = process.cwd();
 const output = path.join(root, 'www');
-const folders = ['data', 'icons'];
+const folders = ['data', 'icons', 'vendor'];
 
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
@@ -14,7 +14,7 @@ const referenced=[...indexSource.matchAll(/(?:src|href)="([^"?]+\.(?:js|css|webm
 const bootModules=[...bootstrapSource.matchAll(/'([^']+\.js)'/g)].map(match=>match[1]);
 const files=new Set(['index.html','manifest.webmanifest','sw.js','app-db.js','app-bootstrap.js',...referenced,...bootModules]);
 for(const file of files){
-  if(file.startsWith('data/')||file.startsWith('icons/'))continue;
+  if(file.startsWith('data/')||file.startsWith('icons/')||file.startsWith('vendor/'))continue;
   await access(path.join(root,file));
   await cp(path.join(root,file),path.join(output,file));
 }

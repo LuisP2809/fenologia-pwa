@@ -241,7 +241,7 @@
     const payload={
       type:'fenologia-full-backup',version:3,createdAt,records:state.records,assignments:state.assignments,
       cleanupHistory:getHistory(),adminConfig:window.FenologiaAdmin?.config?.()||null,adminMap:window.FenologiaAdmin?.map?.()||null,
-      dynamicParameters:window.FenologiaDynamicParameters?.parameters?.()||[],deviceBinding:readJson('device-config-v1',null),
+      dynamicParameters:window.FenologiaDynamicParameters?.parameters?.()||[],deviceBinding:readJson('device-config-v2',null),
       cleanupDeviceProfile:getDeviceProfile()
     };
     const result=await downloadFile(filename,JSON.stringify(payload,null,2),'application/json');

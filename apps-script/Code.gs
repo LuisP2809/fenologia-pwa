@@ -1,9 +1,10 @@
-/* Fenología 0.17.0 · servicio central Google Sheets/Drive.
+/* Fenología 0.18.0 · servicio central Google Sheets/Drive.
  * Este archivo se instala como un proyecto independiente de Google Apps Script.
+ * Activación simplificada por enlace/QR + código temporal de un solo uso.
  * No contiene tokens, IDs de Drive ni datos reales.
  */
 
-const FENOLOGIA_SYNC_VERSION = '0.17.0';
+const FENOLOGIA_SYNC_VERSION = '0.18.0';
 const CONTROL_ID_PROPERTY = 'FENOLOGIA_CONTROL_SPREADSHEET_ID';
 const ROOT_FOLDER_ID_PROPERTY = 'FENOLOGIA_ROOT_FOLDER_ID';
 const PENDING_ALERT_HOURS_PROPERTY = 'FENOLOGIA_PENDING_ALERT_HOURS';
@@ -11,6 +12,9 @@ const FILE_WARNING_PERCENT_PROPERTY = 'FENOLOGIA_FILE_WARNING_PERCENT';
 const MAX_BATCH_SIZE = 25;
 const MAX_SNAPSHOT_RECORDS = 5000;
 const SHEET_CELL_LIMIT = 10000000;
+const ACTIVATION_TTL_MS = 24 * 60 * 60 * 1000;
+const ACTIVATION_PREFIX = 'FENOLOGIA_ACTIVATION_';
+const ADMIN_SETUP_PREFIX = 'FENOLOGIA_ADMIN_SETUP_';
 let runtimeControlCache=null;
 let runtimeRootCache=null;
 let runtimeWeekCache={};
@@ -33,7 +37,7 @@ const META_HEADERS = ['ID DATA','CAMPAÑA','EVALUADOR ID','EVALUADOR','SEMANA AR
 const AUDIT_HEADERS = ['FECHA HORA','EVENTO','ID DATA','EVALUADOR ID','SEMANA ARCHIVO','REVISIÓN','HASH','DETALLE'];
 
 const CONTROL_HEADERS = {
-  USUARIOS_SYNC:['EVALUADOR ID','NOMBRE','ROL','TOKEN HASH','ACTIVO','CREADO','ÚLTIMO ACCESO'],
+  USUARIOS_SYNC:['USUARIO ID','USUARIO','NOMBRE','ROL','TOKEN HASH','ACTIVO','CREADO','ÚLTIMO ACCESO'],
   INDICE_GENERAL:['SEMANA ARCHIVO','CAMPAÑA','AÑO-SEMANA','ARCHIVO ID','ARCHIVO','URL','ESTADO','REGISTROS','CREADO','ACTUALIZADO','CELDAS ASIGNADAS','CAPACIDAD %'],
   REGISTRO_UUID:['UUID','CLAVE LÓGICA','HASH','REVISIÓN','SEMANA ARCHIVO','ARCHIVO ID','RECIBO','SINCRONIZADO','EVALUADOR ID','PAYLOAD JSON','ESTADO','ACTUALIZADO'],
   DISPOSITIVOS:['DISPOSITIVO ID','EVALUADOR ID','NOMBRE','ROL','ÚLTIMO CONTACTO','PENDIENTES','VERSIÓN APP','ESTADO'],
@@ -53,9 +57,17 @@ function setupFenologia(){
   const savedControlId=properties.getProperty(CONTROL_ID_PROPERTY);
   try{if(savedControlId)control=SpreadsheetApp.openById(savedControlId);}catch(error){control=null;}
   if(!control){
-    control=SpreadsheetApp.create('FENOLOGIA_CONTROL_0_17_0');
+    control=SpreadsheetApp.create('FENOLOGIA_CONTROL_0_18_0');
     DriveApp.getFileById(control.getId()).moveTo(root);
     properties.setProperty(CONTROL_ID_PROPERTY,control.getId());
+  }
+  const legacyUsers=control.getSheetByName('USUARIOS_SYNC');
+  if(legacyUsers&&legacyUsers.getLastColumn()>=7&&clean_(legacyUsers.getRange(1,2).getValue()).toUpperCase()==='NOMBRE'){
+    legacyUsers.insertColumnAfter(1);
+    if(legacyUsers.getLastRow()>1){
+      const ids=legacyUsers.getRange(2,1,legacyUsers.getLastRow()-1,1).getValues();
+      legacyUsers.getRange(2,2,ids.length,1).setValues(ids.map(function(row,index){return [normalizeUsername_(clean_(row[0]).toLowerCase())||'usuario.'+String(index+1).padStart(3,'0')];}));
+    }
   }
   Object.keys(CONTROL_HEADERS).forEach(function(name){ensureSheet_(control,name,CONTROL_HEADERS[name]);});
   const defaultSheet=control.getSheetByName('Sheet1')||control.getSheetByName('Hoja 1');
@@ -65,22 +77,26 @@ function setupFenologia(){
   return {version:FENOLOGIA_SYNC_VERSION,folderId:root.getId(),folderUrl:root.getUrl(),controlId:control.getId(),controlUrl:control.getUrl()};
 }
 
-function registerSyncUser(evaluatorId,name,role,plainToken){
+function registerSyncUser(evaluatorId,name,role,plainToken,username){
   resetRuntimeCaches_();
   setupFenologia();
   const id=clean_(evaluatorId).toUpperCase();
   const safeRole=clean_(role);
   if(!id||!name)throw new Error('Indica el ID y el nombre del usuario.');
   if(['Evaluador','Supervisor','Administrador'].indexOf(safeRole)<0)throw new Error('El rol no es válido.');
+  const safeUsername=normalizeUsername_(username||id.toLowerCase());
+  if(!safeUsername)throw new Error('El nombre de usuario no es válido.');
+  const existingUsername=findUserByUsername_(safeUsername);
+  if(existingUsername&&existingUsername.id!==id)throw new Error('Ese nombre de usuario ya existe.');
   const token=clean_(plainToken)||generateToken_();
   if(token.length<24)throw new Error('El token debe tener al menos 24 caracteres.');
   const sheet=control_().getSheetByName('USUARIOS_SYNC');
   const rows=sheetValues_(sheet);
   const rowIndex=rows.findIndex(function(row,index){return index>0&&clean_(row[0]).toUpperCase()===id;});
-  const created=rowIndex>0?(rows[rowIndex][5]||new Date()):new Date();
-  const values=[id,clean_(name),safeRole,sha256Hex_(token),true,created,''];
+  const created=rowIndex>0?(rows[rowIndex][6]||new Date()):new Date();
+  const values=[id,safeUsername,clean_(name),safeRole,sha256Hex_(token),true,created,''];
   if(rowIndex>0)sheet.getRange(rowIndex+1,1,1,values.length).setValues([values]);else sheet.appendRow(values);
-  return {version:FENOLOGIA_SYNC_VERSION,evaluatorId:id,name:clean_(name),role:safeRole,deviceToken:token,warning:'Guarda este token de forma segura; no vuelve a mostrarse automáticamente.'};
+  return {version:FENOLOGIA_SYNC_VERSION,evaluatorId:id,username:safeUsername,name:clean_(name),role:safeRole,deviceToken:token,warning:'Este token se instala automáticamente y no debe compartirse.'};
 }
 
 function provisionSyncUserFromProperties(){
@@ -104,25 +120,206 @@ function revokeSyncUser(evaluatorId){
   const rows=sheetValues_(sheet);
   const rowIndex=rows.findIndex(function(row,index){return index>0&&clean_(row[0]).toUpperCase()===id;});
   if(rowIndex<1)return false;
-  sheet.getRange(rowIndex+1,5).setValue(false);
+  sheet.getRange(rowIndex+1,6).setValue(false);
   return true;
+}
+
+function prepareInitialAdmin(){
+  resetRuntimeCaches_();
+  setupFenologia();
+  if(listSyncUsers_().length)throw new Error('Ya existe un usuario central. El inicio seguro solo se prepara con USUARIOS_SYNC vacío.');
+  ['CONFIG_CENTRAL','DISPOSITIVOS'].forEach(function(name){const sheet=control_().getSheetByName(name);if(sheet.getLastRow()>1)sheet.getRange(2,1,sheet.getLastRow()-1,sheet.getLastColumn()).clearContent();});
+  const properties=PropertiesService.getScriptProperties();
+  Object.keys(properties.getProperties()).forEach(function(key){if(key.indexOf(ACTIVATION_PREFIX)===0||key.indexOf(ADMIN_SETUP_PREFIX)===0)properties.deleteProperty(key);});
+  const code=generateActivationCode_();
+  const expiresAt=new Date(Date.now()+ACTIVATION_TTL_MS).toISOString();
+  properties.setProperty(ADMIN_SETUP_PREFIX+sha256Hex_(normalizeActivationCode_(code)),JSON.stringify({expiresAt:expiresAt}));
+  const result={version:FENOLOGIA_SYNC_VERSION,setupCode:formatActivationCode_(code),expiresAt:expiresAt};
+  console.log('INICIO_ADMIN='+JSON.stringify(result));
+  return result;
+}
+
+function prepareAdminRecovery(){
+  resetRuntimeCaches_();setupFenologia();
+  const admin=findUser_('ADM-001');
+  if(!admin||!admin.active||admin.role!=='Administrador')throw new Error('No existe un ADM-001 activo para recuperar.');
+  const activation=issueActivation_(admin.id,'RECOVERY');
+  const result={version:FENOLOGIA_SYNC_VERSION,activationCode:activation.code,expiresAt:activation.expiresAt};
+  console.log('RECUPERACION_ADMIN='+JSON.stringify(result));
+  return result;
 }
 
 function doPost(event){
   try{
     resetRuntimeCaches_();
     const body=JSON.parse(event&&event.postData&&event.postData.contents||'{}');
-    if(['submit','resolve-alert','publish-config'].indexOf(body.action)<0)return jsonOutput_({ok:false,message:'Acción no permitida.'});
+    if(['submit','resolve-alert','publish-config','bootstrap-admin','ping','list-users','create-user','update-user','set-user-active','create-activation','redeem-activation'].indexOf(body.action)<0)return jsonOutput_({ok:false,errorCode:'ACTION_NOT_ALLOWED',message:'Acción no permitida.'});
     const lock=LockService.getScriptLock();
     lock.waitLock(30000);
     try{
-      const result=body.action==='submit'?submitLocked_(body):body.action==='resolve-alert'?resolveAlertLocked_(body):publishCentralConfigLocked_(body);
+      let result;
+      if(body.action==='submit')result=submitLocked_(body);
+      else if(body.action==='resolve-alert')result=resolveAlertLocked_(body);
+      else if(body.action==='publish-config')result=publishCentralConfigLocked_(body);
+      else if(body.action==='bootstrap-admin')result=bootstrapAdminAction_(body);
+      else if(body.action==='ping')result=pingAction_(body);
+      else if(body.action==='list-users')result=listUsersAction_(body);
+      else if(body.action==='create-user')result=createUserAction_(body);
+      else if(body.action==='update-user')result=updateUserAction_(body);
+      else if(body.action==='set-user-active')result=setUserActiveAction_(body);
+      else if(body.action==='create-activation')result=createActivationAction_(body);
+      else result=redeemActivationAction_(body);
       return jsonOutput_(result);
     }finally{lock.releaseLock();}
   }catch(error){
-    return jsonOutput_({ok:false,message:cleanError_(error)});
+    return jsonOutput_({ok:false,errorCode:error&&error.code?error.code:'SERVER_ERROR',message:cleanError_(error)});
   }
 }
+
+function bootstrapAdminAction_(body){
+  cleanupExpiredAccessCodes_();
+  if(listSyncUsers_().length)throw apiError_('ADMIN_EXISTS','El Administrador principal ya fue creado.');
+  const code=normalizeActivationCode_(body.setupCode);
+  if(!code)throw apiError_('INVALID_SETUP_CODE','El código inicial no es válido.');
+  const properties=PropertiesService.getScriptProperties();
+  const key=ADMIN_SETUP_PREFIX+sha256Hex_(code);
+  const raw=properties.getProperty(key);
+  if(!raw)throw apiError_('INVALID_SETUP_CODE','El código inicial no existe, ya fue usado o venció.');
+  let setup;
+  try{setup=JSON.parse(raw);}catch(error){setup=null;}
+  if(!setup||!setup.expiresAt||new Date(setup.expiresAt).getTime()<=Date.now()){
+    properties.deleteProperty(key);
+    throw apiError_('SETUP_CODE_EXPIRED','El código inicial venció. Ejecuta nuevamente prepareInitialAdmin().');
+  }
+  const name=clean_(body.name).slice(0,120);
+  const username=normalizeUsername_(body.username);
+  if(!name)throw apiError_('INVALID_NAME','Indica el nombre del Administrador.');
+  if(!username)throw apiError_('INVALID_USERNAME','El usuario debe tener entre 3 y 30 caracteres: letras, números, punto, guion o guion bajo.');
+  const profile=registerSyncUser('ADM-001',name,'Administrador','',username);
+  properties.deleteProperty(key);
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,profile:profile,user:publicSyncUser_(findUser_('ADM-001'))};
+}
+
+function pingAction_(body){
+  const user=authenticatePost_(body);
+  touchUser_(user);
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,user:publicSyncUser_(user)};
+}
+
+function listUsersAction_(body){
+  const actor=authenticatePost_(body);requireAdmin_(actor);touchUser_(actor);
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,users:listSyncUsers_()};
+}
+
+function createUserAction_(body){
+  const actor=authenticatePost_(body);requireAdmin_(actor);
+  const input=body.user||{};
+  const role=clean_(input.role);
+  if(['Evaluador','Supervisor'].indexOf(role)<0)throw apiError_('ROLE_NOT_ALLOWED','Desde la PWA solo se pueden crear Evaluadores o Supervisores.');
+  const username=normalizeUsername_(input.username);
+  const name=clean_(input.name).slice(0,120);
+  if(!name)throw apiError_('INVALID_NAME','Indica el nombre del usuario.');
+  if(!username)throw apiError_('INVALID_USERNAME','El usuario debe tener entre 3 y 30 caracteres: letras, números, punto, guion o guion bajo.');
+  if(findUserByUsername_(username))throw apiError_('USERNAME_EXISTS','Ese nombre de usuario ya existe.');
+  const id=nextSyncUserId_(role);
+  registerSyncUser(id,name,role,'',username);
+  const activation=issueActivation_(id,actor.id);
+  touchUser_(actor);
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,user:publicSyncUser_(findUser_(id)),activation:activation,users:listSyncUsers_()};
+}
+
+function updateUserAction_(body){
+  const actor=authenticatePost_(body);requireAdmin_(actor);
+  const input=body.user||{};const id=clean_(input.id).toUpperCase();
+  const target=findUser_(id);if(!target)throw apiError_('USER_NOT_FOUND','Usuario no encontrado.');
+  if(target.role==='Administrador')throw apiError_('ADMIN_PROTECTED','El Administrador principal no se edita desde esta pantalla.');
+  const name=clean_(input.name).slice(0,120);const role=clean_(input.role);
+  if(!name)throw apiError_('INVALID_NAME','Indica el nombre del usuario.');
+  if(['Evaluador','Supervisor'].indexOf(role)<0)throw apiError_('ROLE_NOT_ALLOWED','El rol no es válido.');
+  const sheet=control_().getSheetByName('USUARIOS_SYNC');
+  sheet.getRange(target.row,3).setValue(name);sheet.getRange(target.row,4).setValue(role);
+  touchUser_(actor);
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,user:publicSyncUser_(findUser_(id)),users:listSyncUsers_()};
+}
+
+function setUserActiveAction_(body){
+  const actor=authenticatePost_(body);requireAdmin_(actor);
+  const id=clean_(body.targetUserId).toUpperCase();const active=body.active===true;
+  const target=findUser_(id);if(!target)throw apiError_('USER_NOT_FOUND','Usuario no encontrado.');
+  if(target.id===actor.id&&!active)throw apiError_('SELF_DISABLE','No puedes desactivar tu propio usuario.');
+  if(target.role==='Administrador'&&!active)throw apiError_('ADMIN_PROTECTED','El Administrador principal no se puede desactivar.');
+  control_().getSheetByName('USUARIOS_SYNC').getRange(target.row,6).setValue(active);
+  touchUser_(actor);
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,user:publicSyncUser_(findUser_(id)),users:listSyncUsers_()};
+}
+
+function createActivationAction_(body){
+  const actor=authenticatePost_(body);requireAdmin_(actor);
+  const id=clean_(body.targetUserId).toUpperCase();const target=findUser_(id);
+  if(!target)throw apiError_('USER_NOT_FOUND','Usuario no encontrado.');
+  if(target.role==='Administrador')throw apiError_('ADMIN_PROTECTED','El Administrador principal no usa códigos temporales.');
+  if(!target.active)throw apiError_('USER_DISABLED','Activa el usuario antes de generar un acceso.');
+  const activation=issueActivation_(id,actor.id);touchUser_(actor);
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,activation:activation};
+}
+
+function redeemActivationAction_(body){
+  cleanupExpiredAccessCodes_();
+  const code=normalizeActivationCode_(body.activationCode);
+  if(!code)throw apiError_('INVALID_ACTIVATION','El código de activación no es válido.');
+  const properties=PropertiesService.getScriptProperties();const key=ACTIVATION_PREFIX+sha256Hex_(code);
+  const raw=properties.getProperty(key);
+  if(!raw)throw apiError_('INVALID_ACTIVATION','El código no existe, ya fue usado o venció.');
+  let activation;try{activation=JSON.parse(raw);}catch(error){activation=null;}
+  if(!activation||!activation.userId||!activation.expiresAt){properties.deleteProperty(key);throw apiError_('INVALID_ACTIVATION','El código de activación no es válido.');}
+  if(new Date(activation.expiresAt).getTime()<=Date.now()){properties.deleteProperty(key);throw apiError_('ACTIVATION_EXPIRED','El código venció. Solicita uno nuevo al Administrador.');}
+  const user=findUser_(activation.userId);if(!user){properties.deleteProperty(key);throw apiError_('USER_NOT_FOUND','El usuario asociado ya no existe.');}
+  if(!user.active)throw apiError_('USER_DISABLED','Este usuario está desactivado.');
+  const profile=rotateSyncToken_(user.id);properties.deleteProperty(key);touchUser_(findUser_(user.id));
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,profile:profile,user:publicSyncUser_(findUser_(user.id))};
+}
+
+function issueActivation_(userId,actorId){
+  cleanupExpiredAccessCodes_();const user=findUser_(userId);
+  if(!user)throw apiError_('USER_NOT_FOUND','Usuario no encontrado.');
+  if(!user.active)throw apiError_('USER_DISABLED','El usuario está desactivado.');
+  const properties=PropertiesService.getScriptProperties();
+  const stored=properties.getProperties();Object.keys(stored).forEach(function(storedKey){
+    if(storedKey.indexOf(ACTIVATION_PREFIX)!==0)return;
+    try{const item=JSON.parse(stored[storedKey]);if(clean_(item.userId).toUpperCase()===user.id)properties.deleteProperty(storedKey);}catch(error){properties.deleteProperty(storedKey);}
+  });
+  let code='';let key='';
+  for(let attempt=0;attempt<8;attempt++){code=generateActivationCode_();key=ACTIVATION_PREFIX+sha256Hex_(code);if(!properties.getProperty(key))break;code='';}
+  if(!code)throw apiError_('ACTIVATION_ERROR','No se pudo generar un código único. Intenta nuevamente.');
+  const expiresAt=new Date(Date.now()+ACTIVATION_TTL_MS).toISOString();
+  properties.setProperty(key,JSON.stringify({userId:user.id,createdBy:actorId,expiresAt:expiresAt}));
+  return {code:formatActivationCode_(code),expiresAt:expiresAt,user:publicSyncUser_(user)};
+}
+
+function rotateSyncToken_(userId){
+  const user=findUser_(userId);if(!user)throw apiError_('USER_NOT_FOUND','Usuario no encontrado.');
+  const token=generateToken_();control_().getSheetByName('USUARIOS_SYNC').getRange(user.row,5).setValue(sha256Hex_(token));
+  return {version:FENOLOGIA_SYNC_VERSION,evaluatorId:user.id,username:user.username,name:user.name,role:user.role,deviceToken:token};
+}
+
+function cleanupExpiredAccessCodes_(){
+  const properties=PropertiesService.getScriptProperties();const all=properties.getProperties();
+  Object.keys(all).forEach(function(key){
+    if(key.indexOf(ACTIVATION_PREFIX)!==0&&key.indexOf(ADMIN_SETUP_PREFIX)!==0)return;
+    try{const item=JSON.parse(all[key]);if(!item.expiresAt||new Date(item.expiresAt).getTime()<=Date.now())properties.deleteProperty(key);}catch(error){properties.deleteProperty(key);}
+  });
+}
+
+function generateActivationCode_(){
+  const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';const source=(Utilities.getUuid()+Utilities.getUuid()).replace(/-/g,'');let code='';
+  for(let index=0;index<8;index++){const pair=source.slice(index*2,index*2+2);code+=alphabet[parseInt(pair,16)%alphabet.length];}
+  return code;
+}
+function normalizeActivationCode_(value){const code=clean_(value).toUpperCase().replace(/[^A-Z0-9]/g,'');return /^[A-HJ-NP-Z2-9]{8}$/.test(code)?code:'';}
+function formatActivationCode_(code){const value=normalizeActivationCode_(code);return value?value.slice(0,4)+'-'+value.slice(4):'';}
+function normalizeUsername_(value){const username=clean_(value).toLowerCase();return /^[a-z0-9._-]{3,30}$/.test(username)?username:'';}
+function requireAdmin_(user){if(!user||user.role!=='Administrador')throw apiError_('FORBIDDEN','Solo el Administrador puede realizar esta acción.');}
+function apiError_(code,message){const error=new Error(message);error.code=code;return error;}
 
 function resolveAlertLocked_(body){
   const user=authenticatePost_(body);
@@ -174,7 +371,7 @@ function currentCentralConfig_(){
 
 function validateCentralConfig_(value){
   if(!value||typeof value!=='object'||value.type!=='fenologia-central-config'||Number(value.version)!==1)throw new Error('La configuración central no es válida.');
-  if(clean_(value.systemEpoch)!=='fresh-start-v1')throw new Error('La configuración pertenece a una etapa anterior del sistema.');
+  if(clean_(value.systemEpoch)!=='fresh-start-v2')throw new Error('La configuración pertenece a una etapa anterior del sistema.');
   const revision=Number(value.revision||0);
   if(!Number.isInteger(revision)||revision<1)throw new Error('La revisión de configuración no es válida.');
   if(!Array.isArray(value.users)||!value.users.length)throw new Error('La configuración no contiene usuarios.');
@@ -185,11 +382,12 @@ function validateCentralConfig_(value){
     if(seen[id])throw new Error('La configuración repite el usuario '+id+'.');seen[id]=true;
     if(['Evaluador','Supervisor','Administrador'].indexOf(role)<0)throw new Error('La configuración contiene un rol no válido.');
     const permissions=Array.isArray(item.permissions)?item.permissions.map(clean_).filter(Boolean).slice(0,20):[];
-    return {id:id,name:name.slice(0,120),role:role,active:item.active!==false,permissions:permissions};
+    const username=normalizeUsername_(item&&item.username)||normalizeUsername_(id.toLowerCase());
+    return {id:id,username:username,name:name.slice(0,120),role:role,active:item.active!==false,permissions:permissions};
   });
   const cloneValue=function(input,fallback){try{return JSON.parse(JSON.stringify(input===undefined?fallback:input));}catch(error){throw new Error('La configuración contiene datos que no se pueden guardar.');}};
   const result={
-    type:'fenologia-central-config',version:1,systemEpoch:'fresh-start-v1',revision:revision,
+    type:'fenologia-central-config',version:1,systemEpoch:'fresh-start-v2',revision:revision,
     updatedAt:clean_(value.updatedAt)||new Date().toISOString(),users:users,
     catalog:cloneValue(value.catalog,{}),assignments:cloneValue(value.assignments,{}),
     campaigns:cloneValue(value.campaigns,[]),archivedLots:cloneValue(value.archivedLots,[])
@@ -206,8 +404,8 @@ function applyCentralUsers_(users){
   for(let index=1;index<rows.length;index++){
     const id=clean_(rows[index][0]).toUpperCase();if(!id)continue;
     const central=byId[id];
-    if(central){sheet.getRange(index+1,2).setValue(central.name);sheet.getRange(index+1,3).setValue(central.role);sheet.getRange(index+1,5).setValue(central.active);}
-    else sheet.getRange(index+1,5).setValue(false);
+    if(central){sheet.getRange(index+1,2).setValue(central.username);sheet.getRange(index+1,3).setValue(central.name);sheet.getRange(index+1,4).setValue(central.role);sheet.getRange(index+1,6).setValue(central.active);}
+    else sheet.getRange(index+1,6).setValue(false);
   }
 }
 
@@ -535,12 +733,30 @@ function findUser_(evaluatorId){
   const rows=sheetValues_(sheet);
   for(let index=1;index<rows.length;index++){
     const row=rows[index];
-    if(clean_(row[0]).toUpperCase()===id)return {id:id,name:clean_(row[1]),role:clean_(row[2]),tokenHash:clean_(row[3]),active:row[4]===true||String(row[4]).toUpperCase()==='TRUE',row:index+1};
+    if(clean_(row[0]).toUpperCase()===id)return {id:id,username:normalizeUsername_(row[1]),name:clean_(row[2]),role:clean_(row[3]),tokenHash:clean_(row[4]),active:row[5]===true||String(row[5]).toUpperCase()==='TRUE',row:index+1};
   }
   return null;
 }
 
-function touchUser_(user){control_().getSheetByName('USUARIOS_SYNC').getRange(user.row,7).setValue(new Date());}
+function findUserByUsername_(username){
+  const value=normalizeUsername_(username);if(!value)return null;
+  const rows=sheetValues_(control_().getSheetByName('USUARIOS_SYNC'));
+  for(let index=1;index<rows.length;index++){if(normalizeUsername_(rows[index][1])===value)return findUser_(rows[index][0]);}
+  return null;
+}
+function publicSyncUser_(user){return {id:user.id,username:user.username,name:user.name,role:user.role,active:user.active};}
+function listSyncUsers_(){
+  const rows=sheetValues_(control_().getSheetByName('USUARIOS_SYNC'));const users=[];
+  for(let index=1;index<rows.length;index++){const user=findUser_(rows[index][0]);if(user)users.push(publicSyncUser_(user));}
+  return users;
+}
+function nextSyncUserId_(role){
+  const prefix=role==='Supervisor'?'SUP-':'EVA-';let max=0;
+  listSyncUsers_().forEach(function(user){if(user.id.indexOf(prefix)!==0)return;const number=Number(user.id.slice(prefix.length));if(Number.isFinite(number))max=Math.max(max,number);});
+  return prefix+String(max+1).padStart(3,'0');
+}
+
+function touchUser_(user){control_().getSheetByName('USUARIOS_SYNC').getRange(user.row,8).setValue(new Date());}
 
 function updateDevice_(body,user){
   const sheet=control_().getSheetByName('DISPOSITIVOS');

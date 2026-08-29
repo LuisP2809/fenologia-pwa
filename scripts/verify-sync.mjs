@@ -12,21 +12,24 @@ const core=coreContext.window.FenologiaSyncCore;
 const serverSource=await readFile('apps-script/Code.gs','utf8');
 const serverContext={Date,JSON,Math,Number,String,Array,Object,Set,Map,console};
 vm.createContext(serverContext);
-vm.runInContext(`${serverSource}\n;globalThis.__serverTest={FENO_HEADERS,BIO_HEADERS,PARAM_HEADERS,weekKey_,businessKey_,canonicalString_,fenologyRow_,biometryRow_,classifyEntry_,validateCentralConfig_};`,serverContext,{filename:'apps-script/Code.gs'});
+vm.runInContext(`${serverSource}\n;globalThis.__serverTest={FENOLOGIA_SYNC_VERSION,FENO_HEADERS,BIO_HEADERS,PARAM_HEADERS,weekKey_,businessKey_,canonicalString_,fenologyRow_,biometryRow_,classifyEntry_,validateCentralConfig_,normalizeActivationCode_,formatActivationCode_,normalizeUsername_};`,serverContext,{filename:'apps-script/Code.gs'});
 const server=serverContext.__serverTest;
 
-assert(core.VERSION==='0.17.0','El núcleo de sincronización no corresponde a 0.17.0.');
+assert(core.VERSION==='0.18.0'&&server.FENOLOGIA_SYNC_VERSION==='0.18.0','Cliente y servidor no corresponden a 0.18.0.');
 assert(core.isoWeekInfo('2021-01-01').key==='2020-S53','La semana ISO falla al cruzar de año.');
 assert(core.isoWeekInfo('2024-12-30').key==='2025-S01','La primera semana ISO del año siguiente es incorrecta.');
 assert(server.FENO_HEADERS.length===44,'La hoja FENOLOGIA no conserva 44 columnas.');
 assert(server.BIO_HEADERS.length===124,'La hoja BIOMETRIA no conserva 124 columnas.');
 assert(server.PARAM_HEADERS.length===18,'La hoja de parámetros no conserva 18 columnas.');
 const centralConfiguration=server.validateCentralConfig_({
-  type:'fenologia-central-config',version:1,systemEpoch:'fresh-start-v1',revision:2,updatedAt:'2026-08-19T12:00:00.000Z',
-  users:[{id:'ADM-001',name:'Administrador',role:'Administrador',active:true,permissions:['admin'],pinHash:'NO-DEBE-SALIR'}],
+  type:'fenologia-central-config',version:1,systemEpoch:'fresh-start-v2',revision:2,updatedAt:'2026-08-19T12:00:00.000Z',
+  users:[{id:'ADM-001',username:'admin',name:'Administrador',role:'Administrador',active:true,permissions:['admin'],pinHash:'NO-DEBE-SALIR'}],
   catalog:{lotesAgrupados:{}},assignments:{},campaigns:[],archivedLots:[]
 });
 assert(!('pinHash' in centralConfiguration.users[0]),'La configuración central expone credenciales locales.');
+assert(centralConfiguration.users[0].username==='admin','La configuración central perdió el usuario de inicio de sesión.');
+assert(server.normalizeActivationCode_('abcd-2345')==='ABCD2345'&&server.formatActivationCode_('ABCD2345')==='ABCD-2345','El código temporal no se normaliza de forma estable.');
+assert(server.normalizeActivationCode_('ABOI-1234')===''&&server.normalizeUsername_('Eva.001')==='eva.001','La validación de código o usuario permite valores ambiguos.');
 
 function sampleRecord(overrides={}){
   return {

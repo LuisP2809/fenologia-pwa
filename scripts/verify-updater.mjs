@@ -27,9 +27,10 @@ async function runScenario({controlled,waiting,alreadyReset=false}){
     'fenologia-session':'sesión anterior',
     'admin-config-v1':'usuarios anteriores',
     'otro-proyecto':'conservar',
-    ...(alreadyReset?{'fenologia-fresh-start-v1':'done'}:{})
+    'fenologia-records':'evaluaciones protegidas',
+    ...(alreadyReset?{'fenologia-access-start-v2':'done'}:{})
   });
-  const sessionStorage=storage({'fenologia-temporal':'anterior','otro-temporal':'conservar'});
+  const sessionStorage=storage({'fenologia-login-attempts-v2':'anterior','otro-temporal':'conservar'});
   const registration={
     waiting:waiting?{postMessage(message){messages.push(message);controllerChange?.();}}:null,
     installing:null,
@@ -69,13 +70,14 @@ assert(legacy.reloads===1,'El puente no recargó después de cambiar el worker.'
 assert(legacy.loaded.length===0,'El puente cargó módulos antes de reemplazar la caché anterior.');
 
 const fresh=await runScenario({controlled:false,waiting:false});
-assert(fresh.loaded.join('|')==='app-db.js?v=0.17.0|app-bootstrap.js?v=0.17.0','El inicio limpio no cargó DB y bootstrap 0.17.0 en orden.');
+assert(fresh.loaded.join('|')==='app-db.js?v=0.18.0|app-bootstrap.js?v=0.18.0','El inicio limpio no cargó DB y bootstrap 0.18.0 en orden.');
 assert(fresh.reloads===0,'El inicio limpio provocó una recarga innecesaria.');
-assert(fresh.deletedDatabases.join('|')==='fenologia-pwa','El reinicio no eliminó la base IndexedDB de Fenología.');
+assert(fresh.deletedDatabases.length===0,'El reinicio de accesos eliminó la base IndexedDB y pudo borrar evaluaciones.');
 assert(!('fenologia-session' in fresh.local)&&!('admin-config-v1' in fresh.local),'El reinicio conservó usuarios o sesiones anteriores.');
-assert(!('fenologia-temporal' in fresh.session),'El reinicio conservó datos temporales de Fenología.');
+assert(!('fenologia-login-attempts-v2' in fresh.session),'El reinicio conservó intentos de acceso anteriores.');
 assert(fresh.local['otro-proyecto']==='conservar'&&fresh.session['otro-temporal']==='conservar','El reinicio borró datos ajenos a Fenología.');
-assert(fresh.local['fenologia-fresh-start-v1']==='done','El reinicio no dejó su marcador de ejecución única.');
+assert(fresh.local['fenologia-records']==='evaluaciones protegidas','El reinicio borró evaluaciones locales.');
+assert(fresh.local['fenologia-access-start-v2']==='done','El reinicio no dejó su marcador de ejecución única.');
 
 const completed=await runScenario({controlled:false,waiting:false,alreadyReset:true});
 assert(completed.deletedDatabases.length===0,'El reinicio volvió a borrar datos después de completarse.');

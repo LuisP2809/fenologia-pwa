@@ -1,16 +1,16 @@
 (() => {
-  const VERSION = '0.17.0';
-  const SYSTEM_EPOCH = 'fresh-start-v1';
-  const CONFIG_KEY = 'admin-config-v1';
+  const VERSION = '0.18.0';
+  const SYSTEM_EPOCH = 'fresh-start-v2';
+  const CONFIG_KEY = 'admin-config-v2';
   const MAP_KEY = 'admin-map-v1';
   const HISTORY_KEY = 'admin-config-history-v1';
-  const DEVICE_KEY = 'device-config-v1';
-  const CACHE_KEY = 'fenologia-admin-config-cache-v1';
+  const DEVICE_KEY = 'device-config-v2';
+  const CACHE_KEY = 'fenologia-admin-config-cache-v2';
   const CLEANUP_ADMIN_KEY = 'fenologia-cleanup-admin-profiles-v1';
   const CLEANUP_DEVICE_KEY = 'fenologia-cleanup-device-profile-v1';
   const CLEANUP_HISTORY_KEY = 'fenologia-cleanup-history-v1';
   const DEFAULT_PINS = {'ADM-01':'12345678','SUP-01':'11223344','EVA-01':'87654321'};
-  const LOGIN_ATTEMPTS_KEY='fenologia-login-attempts-v1';
+  const LOGIN_ATTEMPTS_KEY='fenologia-login-attempts-v2';
   const PERMISSIONS = [
     ['evaluate','Registrar evaluaciones'],
     ['records','Consultar registros'],
@@ -136,6 +136,7 @@
     config.users=Array.isArray(config.users)?config.users:[];
     config.users=config.users.map(user=>({
       id:safe(user.id),
+      username:safe(user.username||user.id).toLowerCase(),
       name:safe(user.name),
       role:['Evaluador','Supervisor','Administrador'].includes(user.role)?user.role:'Evaluador',
       active:user.active!==false,
@@ -159,7 +160,7 @@
   function syncRuntime(){
     if(!adminConfig) return;
     users.splice(0,users.length,...adminConfig.users.map(user=>({
-      id:user.id,name:user.name,role:user.role,active:user.active,
+      id:user.id,username:user.username,name:user.name,role:user.role,active:user.active,
       permissions:[...user.permissions],pinHash:user.pinHash,pin:''
     })));
     state.catalog=clone(adminConfig.catalog);
@@ -200,7 +201,7 @@
       type:'fenologia-central-config',version:1,systemEpoch:SYSTEM_EPOCH,
       revision:Number(adminConfig.revision||1),updatedAt:adminConfig.updatedAt||now(),
       users:(adminConfig.users||[]).map(user=>({
-        id:user.id,name:user.name,role:user.role,active:user.active!==false,
+        id:user.id,username:user.username,name:user.name,role:user.role,active:user.active!==false,
         permissions:Array.isArray(user.permissions)?[...user.permissions]:rolePermissions(user.role)
       })),
       catalog:clone(adminConfig.catalog),assignments:clone(adminConfig.assignments||{}),
@@ -337,15 +338,15 @@
     const editing=Boolean(user);
     const selected=user?.permissions || rolePermissions(user?.role || 'Evaluador');
     return `<div class="admin-modal-backdrop" id="admin-modal"><section class="admin-modal">
-      <div class="admin-modal-head"><div><span>${editing?'EDITAR USUARIO':'NUEVO USUARIO'}</span><h2>${editing?esc(user.name):'Crear acceso local'}</h2></div><button type="button" data-close-admin-modal>×</button></div>
+      <div class="admin-modal-head"><div><span>${editing?'EDITAR USUARIO':'NUEVO USUARIO'}</span><h2>${editing?esc(user.name):'Crear acceso central'}</h2></div><button type="button" data-close-admin-modal>×</button></div>
       <form id="admin-user-form" class="admin-form">
         <input type="hidden" name="id" value="${esc(user?.id || '')}">
         <label>Nombre completo<input name="name" value="${esc(user?.name || '')}" required></label>
-        <label>Rol<select name="role"><option ${user?.role==='Evaluador'?'selected':''}>Evaluador</option><option ${user?.role==='Supervisor'?'selected':''}>Supervisor</option><option ${user?.role==='Administrador'?'selected':''}>Administrador</option></select></label>
-        <label>DNI / PIN ${editing?'<small>Déjalo vacío para conservarlo</small>':''}<input name="pin" inputmode="numeric" maxlength="8" pattern="\d{8}" ${editing?'':'required'}></label>
+        <label>Usuario<input name="username" value="${esc(user?.username || '')}" pattern="[a-zA-Z0-9._-]{3,30}" ${editing?'readonly':''} required><small>Se usará para iniciar sesión; no puede repetirse.</small></label>
+        <label>Rol<select name="role"><option ${user?.role==='Evaluador'?'selected':''}>Evaluador</option><option ${user?.role==='Supervisor'?'selected':''}>Supervisor</option></select></label>
         <label class="admin-switch"><input type="checkbox" name="active" ${user?.active!==false?'checked':''}><span>Usuario activo</span></label>
         <fieldset><legend>Permisos del dispositivo</legend><div class="admin-check-grid" id="admin-permission-grid">${permissionsHtml(selected)}</div></fieldset>
-        <div class="admin-modal-actions"><button type="button" class="secondary" data-close-admin-modal>Cancelar</button><button class="primary">${editing?'Guardar cambios':'Crear usuario'}</button></div>
+        <div class="admin-modal-actions"><button type="button" class="secondary" data-close-admin-modal>Cancelar</button><button class="primary">${editing?'Guardar cambios':'Crear y generar acceso'}</button></div>
       </form>
     </section></div>`;
   }
@@ -354,14 +355,14 @@
     if(!isAdmin()){state.view='home';return homeView();}
     const rows=(adminConfig?.users || []).map(user=>`<article class="admin-user-card ${user.active?'':'inactive'}">
       <div class="admin-user-avatar">${esc(user.name.split(' ').map(part=>part[0]).slice(0,2).join(''))}</div>
-      <div class="admin-user-main"><b>${esc(user.name)}</b><small>${esc(user.id)} · DNI protegido con SHA-256</small><div class="admin-permission-tags">${(user.permissions || []).map(permission=>`<span>${esc(PERMISSIONS.find(item=>item[0]===permission)?.[1] || permission)}</span>`).join('')}</div></div>
+      <div class="admin-user-main"><b>${esc(user.name)}</b><small>@${esc(user.username)} · ${esc(user.id)}</small><div class="admin-permission-tags">${(user.permissions || []).map(permission=>`<span>${esc(PERMISSIONS.find(item=>item[0]===permission)?.[1] || permission)}</span>`).join('')}</div></div>
       <em class="admin-role">${esc(user.role)}</em>
       <span class="admin-status ${user.active?'active':'inactive'}">${user.active?'Activo':'Inactivo'}</span>
-      <div class="admin-row-actions"><button class="secondary" data-edit-admin-user="${esc(user.id)}">Editar</button><button class="${user.active?'danger-soft':'secondary'}" data-toggle-admin-user="${esc(user.id)}">${user.active?'Desactivar':'Activar'}</button></div>
+      <div class="admin-row-actions">${user.role!=='Administrador'?`<button class="primary" data-new-user-activation="${esc(user.id)}">Generar acceso</button><button class="secondary" data-edit-admin-user="${esc(user.id)}">Editar</button><button class="${user.active?'danger-soft':'secondary'}" data-toggle-admin-user="${esc(user.id)}">${user.active?'Desactivar':'Activar'}</button>`:'<span class="admin-primary-user">Administrador principal</span>'}</div>
     </article>`).join('');
     app.innerHTML=shell(`${titleBlock('ADMINISTRADOR','Usuarios y roles','Crea accesos, asigna roles y desactiva usuarios sin borrar sus evaluaciones.',`<button class="primary" id="new-admin-user">+ Nuevo usuario</button>`)}
       <section class="metrics-grid three">${metric(adminConfig.users.length,'Usuarios registrados',icons.users)}${metric(activeUsers().length,'Usuarios activos',icons.check)}${metric(adminConfig.users.filter(user=>user.role==='Evaluador'&&user.active).length,'Evaluadores activos',icons.clipboard)}</section>
-      <section class="panel"><div class="panel-head"><div><span>ACCESOS LOCALES</span><h2>Usuarios configurados</h2><p>Al desactivar un usuario se bloquea su próximo ingreso, pero sus registros históricos permanecen.</p></div></div><div class="admin-user-list">${rows || '<div class="empty">Sin usuarios</div>'}</div></section>
+      <section class="panel"><div class="panel-head"><div><span>ACCESOS CENTRALES</span><h2>Usuarios configurados</h2><p>Crea un usuario y comparte su QR o código temporal. Al desactivarlo se bloquea su próxima conexión, sin borrar registros.</p></div></div><div class="admin-user-list">${rows || '<div class="empty">Sin usuarios</div>'}</div></section>
       <div id="admin-modal-host"></div>`);
   }
 
@@ -665,23 +666,27 @@
     const card=document.querySelector('.login-card');
     if(!card || card.querySelector('.config-login-import')) return;
     if(initialized&&!(adminConfig?.users || []).length){
-      card.innerHTML=`<div><span class="eyebrow green">CONFIGURACIÓN INICIAL</span><h2>Crear primer Administrador</h2><p>Este será el dispositivo principal desde el que crearás usuarios, roles y accesos.</p></div>
+      const endpoint=window.FenologiaAccess?.defaultEndpoint?.()||'';
+      card.innerHTML=`<div><span class="eyebrow green">CONFIGURACIÓN INICIAL</span><h2>Crear primer Administrador</h2><p>Este será el único Administrador principal. Necesitas el código inicial generado en Apps Script.</p></div>
         <form id="first-admin-form">
           <label>Nombre completo<input name="name" autocomplete="name" required></label>
-          <label>DNI / PIN de 8 dígitos<input name="pin" type="password" inputmode="numeric" maxlength="8" pattern="\\d{8}" autocomplete="new-password" required></label>
-          <label>Confirmar DNI / PIN<input name="pinConfirmation" type="password" inputmode="numeric" maxlength="8" pattern="\\d{8}" autocomplete="new-password" required></label>
+          <label>Usuario<input name="username" value="admin" pattern="[a-zA-Z0-9._-]{3,30}" autocomplete="username" required></label>
+          <label>Código inicial<input name="setupCode" placeholder="ABCD-2345" autocomplete="one-time-code" required></label>
+          <label>Crea un PIN (6 a 12 números)<input name="pin" type="password" inputmode="numeric" minlength="6" maxlength="12" pattern="\\d{6,12}" autocomplete="new-password" required></label>
+          <label>Confirmar PIN<input name="pinConfirmation" type="password" inputmode="numeric" minlength="6" maxlength="12" pattern="\\d{6,12}" autocomplete="new-password" required></label>
+          <details class="admin-endpoint"><summary>Servidor central</summary><label>URL de Apps Script<input name="endpoint" type="url" value="${esc(endpoint)}" required></label></details>
           <div class="first-admin-role"><span>Rol asignado</span><b>Administrador principal</b></div>
           <label class="first-admin-confirm"><input name="primaryDevice" type="checkbox" required><span>Confirmo que este es el dispositivo principal del Administrador.</span></label>
           <button class="primary wide">Crear Administrador y continuar <span>→</span></button>
         </form>
-        <div class="config-login-import"><b>¿Este es otro dispositivo?</b><p>Los Evaluadores y Supervisores no crean un Administrador: importan el acceso nuevo que reciben.</p><button class="secondary" type="button" id="login-import-config">Importar acceso</button><input type="file" id="login-config-file" accept=".json,application/json" hidden></div>`;
+        <div class="config-login-import"><b>¿Este es otro dispositivo?</b><p>Los Evaluadores y Supervisores activan el QR o código que reciben.</p><button class="secondary" type="button" data-open-activation>Activar este dispositivo</button></div>`;
       return;
     }
     const binding=readJson(DEVICE_KEY,null);
     const form=card.querySelector('#login-form');
     const allowed=(adminConfig?.users || []).find(user=>user.id===binding?.targetId) || activeUsers().find(user=>user.role==='Evaluador') || activeUsers()[0];
-    if(form&&allowed){form.name.value=allowed.name;form.pin.value='';}
-    card.insertAdjacentHTML('beforeend',`<div class="config-login-import"><b>${binding?`Dispositivo configurado para ${esc(binding.targetName)}`:'Configurar este dispositivo'}</b><p>${binding?'Usa el acceso del destinatario del paquete.':'Importa el paquete entregado por el Administrador.'}</p><button class="secondary" type="button" id="login-import-config">Importar configuración</button><input type="file" id="login-config-file" accept=".json,application/json" hidden></div>`);
+    if(form&&allowed){form.name.value=allowed.username||allowed.name;form.pin.value='';}
+    card.insertAdjacentHTML('beforeend',`<div class="config-login-import"><b>${binding?`Dispositivo configurado para ${esc(binding.targetName)}`:'Configurar este dispositivo'}</b><p>${binding?'Ingresa con tu Usuario + PIN.':'Escanea el QR o escribe el código entregado por el Administrador.'}</p><button class="secondary" type="button" data-open-activation>Activar este dispositivo</button></div>`);
   };
 
   const previousSidebar=sidebar;
@@ -692,7 +697,6 @@
     const nav=wrapper.querySelector('nav');
     if(isAdmin()&&nav){
       if(!nav.querySelector('[data-view="admin-settings"]')) nav.insertAdjacentHTML('beforeend',`<button data-view="admin-settings" class="${state.view==='admin-settings'?'active':''}"><span>🗓️</span>Campañas y mapa</button>`);
-      if(!nav.querySelector('[data-view="admin-package"]')) nav.insertAdjacentHTML('beforeend',`<button data-view="admin-package" class="${state.view==='admin-package'?'active':''}"><span>📦</span>Paquetes e historial</button>`);
     }
     if(state.session&&!isAdmin()){
       const permissions=state.session.permissions || rolePermissions(state.session.role);
@@ -716,7 +720,6 @@
   render=function completeAdminRender(){
     if(state.session&&!canAccess(state.view)) state.view='home';
     if(state.session&&state.view==='admin-settings') return adminSettingsView();
-    if(state.session&&state.view==='admin-package') return adminPackageView();
     return previousRender();
   };
 
@@ -747,19 +750,26 @@
       try{
         await initialize();
         if((adminConfig?.users || []).length)throw new Error('Ya existe un Administrador. Recarga e inicia sesión.');
-        const data=new FormData(event.target),name=safe(data.get('name')),pin=safe(data.get('pin')),confirmation=safe(data.get('pinConfirmation'));
+        const data=new FormData(event.target),name=safe(data.get('name')),username=safe(data.get('username')).toLowerCase(),pin=safe(data.get('pin')),confirmation=safe(data.get('pinConfirmation'));
         if(name.length<3)throw new Error('Ingresa el nombre completo del Administrador.');
-        if(!/^\d{8}$/.test(pin))throw new Error('El DNI / PIN debe tener exactamente 8 dígitos.');
-        if(pin!==confirmation)throw new Error('La confirmación del DNI / PIN no coincide.');
+        if(!/^[a-z0-9._-]{3,30}$/.test(username))throw new Error('El usuario no tiene un formato válido.');
+        if(!/^\d{6,12}$/.test(pin))throw new Error('El PIN debe tener entre 6 y 12 números.');
+        if(pin!==confirmation)throw new Error('La confirmación del PIN no coincide.');
         if(data.get('primaryDevice')!=='on')throw new Error('Confirma que este es el dispositivo principal.');
+        if(!window.FenologiaAccess?.bootstrapAdmin)throw new Error('El módulo de activación todavía no está disponible.');
+        const response=await window.FenologiaAccess.bootstrapAdmin({endpoint:safe(data.get('endpoint')),setupCode:safe(data.get('setupCode')),name,username});
+        const profile=response.profile;
         const credential=await window.FenologiaCredentials.create(pin);
-        const user={id:'ADM-001',name,role:'Administrador',active:true,...credential,permissions:rolePermissions('Administrador'),createdAt:now(),updatedAt:now()};
+        const user={id:profile.evaluatorId,username:profile.username,name:profile.name,role:'Administrador',active:true,...credential,permissions:rolePermissions('Administrador'),createdAt:now(),updatedAt:now()};
         adminConfig.users=[user];adminConfig.systemEpoch=SYSTEM_EPOCH;adminConfig.revision=1;adminConfig.updatedAt=now();
         writeJson(CACHE_KEY,adminConfig);await setSetting(CONFIG_KEY,adminConfig);syncRuntime();
+        writeJson(DEVICE_KEY,{targetId:user.id,targetName:user.name,role:user.role,activatedAt:now()});
+        await window.FenologiaSync.saveConfig({...window.FenologiaSync.getConfig(),enabled:true,transport:'apps-script',endpoint:safe(data.get('endpoint')),deviceToken:profile.deviceToken});
         await recordHistory('Administrador inicial creado',{usuario:name,rol:'Administrador principal'},name);
         const issuedAt=new Date();
         state.session={id:user.id,name:user.name,role:user.role,permissions:[...user.permissions],issuedAt:issuedAt.toISOString(),lastActiveAt:issuedAt.toISOString(),expiresAt:new Date(issuedAt.getTime()+8*60*60*1000).toISOString()};
         localStorage.setItem('fenologia-session',JSON.stringify(state.session));
+        window.dispatchEvent(new CustomEvent('fenologia-admin-config-change',{detail:{action:'Administrador inicial creado',snapshot:centralSnapshot()}}));
         state.view='home';render();showToast('Administrador principal creado correctamente.');
       }catch(error){showToast(error.message||'No se pudo crear el Administrador principal.');}
       finally{creatingInitialAdmin=false;}
@@ -769,15 +779,22 @@
       event.preventDefault();event.stopImmediatePropagation();
       await initialize();
       const data=new FormData(event.target);
-      const name=safe(data.get('name')).toLowerCase();
+      const username=safe(data.get('name')).toLowerCase();
       const pin=safe(data.get('pin'));
       const blocked=loginBlocked();
       if(blocked){const minutes=Math.ceil((new Date(blocked.lockedUntil).getTime()-Date.now())/60000);return showToast(`Acceso bloqueado temporalmente. Intenta en ${minutes} minuto(s).`);}
-      const user=(adminConfig.users || []).find(item=>item.name.toLowerCase()===name);
-      if(!user||!user.active){failedLogin();return showToast('Nombre o acceso incorrecto.');}
+      const user=(adminConfig.users || []).find(item=>item.username===username);
+      if(!user||!user.active){failedLogin();return showToast('Usuario o PIN incorrecto.');}
       const binding=readJson(DEVICE_KEY,null);
       if(binding?.targetId&&binding.targetId!==user.id) return showToast(`Este dispositivo está configurado para ${binding.targetName}.`);
-      if(!await window.FenologiaCredentials.verify(pin,user)){const count=failedLogin();return showToast(count>=5?'Acceso bloqueado durante 10 minutos.':'Nombre o acceso incorrecto.');}
+      if(!await window.FenologiaCredentials.verify(pin,user)){const count=failedLogin();return showToast(count>=5?'Acceso bloqueado durante 10 minutos.':'Usuario o PIN incorrecto.');}
+      if(navigator.onLine&&window.FenologiaAccess?.verifyCentralUser){
+        try{await window.FenologiaAccess.verifyCentralUser(user.id);}
+        catch(error){
+          if(['USER_DISABLED','UNAUTHORIZED'].includes(error.code)){failedLogin();return showToast(error.code==='USER_DISABLED'?'Tu usuario está desactivado.':'Este acceso fue reemplazado. Solicita un código nuevo.');}
+          showToast('No se pudo validar el servidor; se habilitó el modo sin conexión.');
+        }
+      }
       clearLoginAttempts();
       if(user.pinAlgorithm!=='PBKDF2-SHA256'){
         Object.assign(user,await window.FenologiaCredentials.create(pin));
@@ -791,19 +808,22 @@
 
     if(event.target.id==='admin-user-form'){
       event.preventDefault();event.stopImmediatePropagation();
-      const data=new FormData(event.target),id=safe(data.get('id')),role=safe(data.get('role')),name=safe(data.get('name')),pin=safe(data.get('pin'));
+      const data=new FormData(event.target),id=safe(data.get('id')),role=safe(data.get('role')),name=safe(data.get('name')),username=safe(data.get('username')).toLowerCase();
       if(!name) return showToast('Ingresa el nombre completo.');
-      if(pin&&!/^\d{8}$/.test(pin)) return showToast('El DNI / PIN debe tener 8 dígitos.');
+      if(!/^[a-z0-9._-]{3,30}$/.test(username))return showToast('El usuario debe tener entre 3 y 30 caracteres válidos.');
       let user=id?adminConfig.users.find(item=>item.id===id):null;
       const creating=!user;
-      if(creating){user={id:nextUserId(role),name,role,active:true,pinHash:'',permissions:rolePermissions(role),createdAt:now(),updatedAt:now()};adminConfig.users.push(user);}
-      user.name=name;user.role=role;user.active=data.get('active')==='on';user.permissions=data.getAll('permissions');
+      let central;
+      try{central=creating?await window.FenologiaAccess.createUser({name,username,role}):await window.FenologiaAccess.updateUser({id,name,username,role});}
+      catch(error){return showToast(error.message||'No se pudo guardar el usuario central.');}
+      if(creating){const created=central.user;user={id:created.id,username:created.username,name:created.name,role:created.role,active:true,pinHash:'',permissions:rolePermissions(created.role),createdAt:now(),updatedAt:now()};adminConfig.users.push(user);}
+      user.name=name;user.username=username;user.role=role;user.active=data.get('active')==='on';user.permissions=data.getAll('permissions');
       if(!user.permissions.length) user.permissions=rolePermissions(role);
-      if(pin) Object.assign(user,await window.FenologiaCredentials.create(pin));
-      if(!user.pinHash) return showToast('Define un DNI / PIN para el usuario.');
       user.updatedAt=now();
       await persistConfig(creating?'Usuario creado':'Usuario actualizado',{usuario:user.name,rol:user.role,estado:user.active?'activo':'inactivo'});
-      closeModal();adminUsersView();showToast(creating?'Usuario creado.':'Usuario actualizado.');return;
+      closeModal();adminUsersView();
+      if(creating&&central.activation)window.FenologiaAccess.showActivation(central.activation,'Nuevo acceso: compártelo con el usuario');
+      showToast(creating?'Usuario creado; comparte su QR o código.':'Usuario actualizado.');return;
     }
 
     if(event.target.id==='admin-lot-form'){
@@ -884,11 +904,18 @@
   document.addEventListener('click',async event=>{
     if(event.target.closest('#new-admin-user')){document.querySelector('#admin-modal-host').innerHTML=userModal();return;}
     const editUser=event.target.closest('[data-edit-admin-user]');if(editUser){const user=adminConfig.users.find(item=>item.id===editUser.dataset.editAdminUser);document.querySelector('#admin-modal-host').innerHTML=userModal(user);return;}
+    const newActivation=event.target.closest('[data-new-user-activation]');if(newActivation){
+      try{const result=await window.FenologiaAccess.createActivation(newActivation.dataset.newUserActivation);window.FenologiaAccess.showActivation(result.activation,'Acceso temporal renovado');}
+      catch(error){showToast(error.message||'No se pudo generar el acceso.');}
+      return;
+    }
     const toggleUser=event.target.closest('[data-toggle-admin-user]');if(toggleUser){
       const user=adminConfig.users.find(item=>item.id===toggleUser.dataset.toggleAdminUser);if(!user)return;
       if(user.id===state.session.id&&user.active)return showToast('No puedes desactivar tu propio usuario.');
       if(user.role==='Administrador'&&user.active&&adminConfig.users.filter(item=>item.role==='Administrador'&&item.active).length<=1)return showToast('Debe permanecer al menos un Administrador activo.');
-      user.active=!user.active;user.updatedAt=now();await persistConfig(user.active?'Usuario activado':'Usuario desactivado',{usuario:user.name});adminUsersView();return;
+      const nextActive=!user.active;
+      try{await window.FenologiaAccess.setUserActive(user.id,nextActive);}catch(error){return showToast(error.message||'No se pudo cambiar el estado central.');}
+      user.active=nextActive;user.updatedAt=now();await persistConfig(user.active?'Usuario activado':'Usuario desactivado',{usuario:user.name});adminUsersView();return;
     }
     if(event.target.closest('[data-close-admin-modal]')){closeModal();return;}
     const roleSelect=event.target.closest('#admin-user-form [name="role"]');if(roleSelect)return;
@@ -975,7 +1002,25 @@
     }
   });
 
-  window.FenologiaAdmin={version:VERSION,systemEpoch:SYSTEM_EPOCH,ready:()=>initialize(),config:()=>clone(adminConfig),map:()=>clone(adminMap),importPackage:importConfigPackage,centralSnapshot,applyCentralConfig,handleCentralDeactivation};
+  async function installActivatedUser(profile,pin,endpoint){
+    await initialize();
+    const id=upper(profile?.evaluatorId||profile?.id),username=safe(profile?.username).toLowerCase(),name=safe(profile?.name),role=safe(profile?.role);
+    if(!id||!username||!name||!['Evaluador','Supervisor','Administrador'].includes(role))throw new Error('El perfil de activación llegó incompleto.');
+    if(!/^\d{6,12}$/.test(safe(pin)))throw new Error('El PIN debe tener entre 6 y 12 números.');
+    const credential=await window.FenologiaCredentials.create(pin);
+    const user={id,username,name,role,active:true,...credential,permissions:rolePermissions(role),createdAt:now(),updatedAt:now()};
+    adminConfig=normalizeConfig({...adminConfig,systemEpoch:SYSTEM_EPOCH,revision:1,updatedAt:now(),users:[user]});
+    writeJson(CACHE_KEY,adminConfig);await setSetting(CONFIG_KEY,adminConfig);
+    writeJson(DEVICE_KEY,{targetId:id,targetName:name,role,activatedAt:now()});
+    syncRuntime();await save();
+    const issuedAt=new Date();
+    state.session={id,name,role,permissions:[...user.permissions],issuedAt:issuedAt.toISOString(),lastActiveAt:issuedAt.toISOString(),expiresAt:new Date(issuedAt.getTime()+8*60*60*1000).toISOString()};
+    localStorage.setItem('fenologia-session',JSON.stringify(state.session));
+    state.view='home';
+    return clone(user);
+  }
+
+  window.FenologiaAdmin={version:VERSION,systemEpoch:SYSTEM_EPOCH,ready:()=>initialize(),config:()=>clone(adminConfig),map:()=>clone(adminMap),importPackage:importConfigPackage,centralSnapshot,applyCentralConfig,handleCentralDeactivation,installActivatedUser};
 
   initialize();
 })();

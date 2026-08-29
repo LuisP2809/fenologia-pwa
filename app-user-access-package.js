@@ -1,255 +1,149 @@
 (() => {
-  const VERSION='0.17.0';
-  const SYSTEM_EPOCH='fresh-start-v1';
-  const CLEANUP_ADMIN_KEY='fenologia-cleanup-admin-profiles-v1';
-  const CONFIG_KEY='admin-config-v1';
-  const CACHE_KEY='fenologia-admin-config-cache-v1';
+  const VERSION='0.18.0';
+  const DEFAULT_ENDPOINT='https://script.google.com/macros/s/AKfycby4c2t4QzQsUy9_OdHA7MF8hmVknbbzDwrVvSiL0yj5KNkK4eZ02CtzfWjWqlWm5tSd/exec';
+  let activationScreen=false;
 
-  const clone=value=>value==null?value:JSON.parse(JSON.stringify(value));
   const safe=value=>String(value??'').trim();
-  const readJson=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback));}catch{return fallback;}};
-  const now=()=>new Date().toISOString();
+  const formatExpiry=value=>{try{return new Intl.DateTimeFormat('es-PE',{dateStyle:'short',timeStyle:'short'}).format(new Date(value));}catch{return safe(value);}};
+  const normalizeCode=value=>{const code=safe(value).toUpperCase().replace(/[^A-Z0-9]/g,'');return code.length===8?`${code.slice(0,4)}-${code.slice(4)}`:safe(value).toUpperCase();};
 
-  function cleanupProfileFor(target){
-    if(target?.role!=='Evaluador') return null;
-    const profile=readJson(CLEANUP_ADMIN_KEY,{})?.[target.id];
-    if(!profile) return null;
-    return {
-      type:'fenologia-cleanup-profile',
-      version:1,
-      evaluatorId:profile.evaluatorId,
-      evaluatorName:profile.evaluatorName,
-      secret:profile.secret,
-      issuedAt:profile.createdAt,
-      issuedBy:profile.createdBy,
-      revision:profile.revision,
-      validUntil:new Date(new Date(profile.createdAt).getTime()+90*86400000).toISOString(),
-      embeddedInSignedPackage:true
-    };
+  class AccessError extends Error{
+    constructor(code,message){super(message);this.name='FenologiaAccessError';this.code=code||'ACCESS_ERROR';}
   }
 
-  function normalizedPermissions(user){
-    const permissions=new Set(Array.isArray(user.permissions)?user.permissions:[]);
-    if(user.role==='Evaluador'){
-      permissions.add('evaluate');
-      permissions.add('records');
-      permissions.add('export');
-      permissions.add('map');
-      permissions.delete('charts');
-      permissions.delete('consolidate');
-      permissions.delete('admin');
-    }
-    if(user.role==='Administrador'){
-      ['evaluate','records','export','consolidate','map','charts','admin'].forEach(permission=>permissions.add(permission));
-    }
-    return [...permissions];
+  function endpointFromConfig(){return safe(window.FenologiaSync?.getConfig?.().endpoint)||DEFAULT_ENDPOINT;}
+  function validateEndpoint(value){
+    const endpoint=safe(value);let url;
+    try{url=new URL(endpoint);}catch{throw new AccessError('INVALID_ENDPOINT','La URL del servidor no es válida.');}
+    if(url.protocol!=='https:'||url.hostname!=='script.google.com'||!url.pathname.endsWith('/exec'))throw new AccessError('INVALID_ENDPOINT','Usa la URL HTTPS de Apps Script terminada en /exec.');
+    return endpoint;
   }
 
-  async function downloadAccess(userId){
-    if(state?.session?.role!=='Administrador') return showToast('Solo el Administrador puede descargar accesos.');
-    const config=window.FenologiaAdmin?.config?.();
-    if(!config||!Array.isArray(config.users)) return showToast('La configuración de usuarios aún no está disponible.');
-    const target=config.users.find(user=>user.id===userId&&user.active!==false);
-    if(!target) return showToast('El usuario no existe o está inactivo.');
-    if(!safe(target.pinHash)) return showToast('El usuario no tiene un DNI configurado.');
-
-    const activeUsers=config.users.filter(user=>user.active!==false);
-    const directory=activeUsers.map(user=>({
-      id:user.id,
-      name:user.name,
-      role:user.role,
-      active:true,
-      permissions:normalizedPermissions(user),
-      pinHash:user.id===target.id?user.pinHash:null,
-      pinSalt:user.id===target.id?user.pinSalt:null,
-      pinAlgorithm:user.id===target.id?user.pinAlgorithm:null,
-      pinIterations:user.id===target.id?user.pinIterations:null,
-      loginAllowed:user.id===target.id
-    }));
-    const cleanupProfile=cleanupProfileFor(target);
-    const core={
-      type:'fenologia-config-package',
-      version:2,
-      systemEpoch:SYSTEM_EPOCH,
-      packageId:`PKG-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`,
-      issuedAt:now(),
-      issuedBy:state.session.name,
-      revision:Number(config.revision||1),
-      target:{id:target.id,name:target.name,role:target.role},
-      users:directory,
-      catalog:clone(config.catalog||state.catalog),
-      assignments:clone(config.assignments||state.assignments||{}),
-      campaigns:clone(config.campaigns||[]),
-      map:clone(window.FenologiaAdmin?.map?.()||null),
-      cleanupProfile,
-      dynamicParameters:window.FenologiaDynamicParameters?.parameters?.()||[]
-    };
-    const payload=await window.FenologiaPackageSecurity.sign(core);
-    const stamp=(typeof today==='function'?today():new Date().toISOString().slice(0,10)).replaceAll('-','');
-    const result=await downloadFile(`ACCESO_FENOLOGIA_${target.id}_${stamp}.json`,JSON.stringify(payload,null,2),'application/json');
-    if(!result?.ok)return showToast('La descarga del acceso fue cancelada.');
-    showToast(cleanupProfile
-      ? `Acceso de ${target.name} descargado; incluye autorización de limpieza.`
-      : `Acceso de ${target.name} descargado.`);
+  async function post(endpoint,body){
+    if(!navigator.onLine)throw new AccessError('OFFLINE','Necesitas internet para completar esta operación.');
+    let response;
+    try{response=await fetch(validateEndpoint(endpoint),{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),cache:'no-store'});}
+    catch(error){throw new AccessError('NETWORK_ERROR','No se pudo contactar al servidor central.');}
+    if(!response.ok)throw new AccessError(`HTTP_${response.status}`,`El servidor respondió HTTP ${response.status}.`);
+    const result=await response.json();
+    if(!result?.ok)throw new AccessError(result?.errorCode,result?.message||result?.error||'La solicitud fue rechazada.');
     return result;
   }
 
-  function devicePreparationModal(target){
-    const syncConfig=window.FenologiaSync?.getConfig?.()||{};
-    const endpoint=safe(syncConfig.endpoint);
-    return `<div class="admin-modal-backdrop" id="admin-modal"><section class="admin-modal device-preparation-modal">
-      <div class="admin-modal-head"><div><span>PREPARAR DISPOSITIVO</span><h2>${esc(target.name)}</h2></div><button type="button" data-close-admin-modal>×</button></div>
-      <div class="device-preparation-identity"><b>${esc(target.id)}</b><span>${esc(target.role)}</span><small>Activo · nombre, ID y rol bloqueados para evitar cruces</small></div>
-      <section class="device-preparation-step required-step">
-        <div class="device-step-number">1</div><div><span>ACCESO LOCAL · OBLIGATORIO</span><h3>Permitir el ingreso con nombre y DNI</h3><p>Este es el archivo que se importa en la pantalla de bienvenida del celular. No contiene el token de Drive.</p><code>ACCESO_FENOLOGIA_${esc(target.id)}_AAAAMMDD.json</code></div>
-        <button type="button" class="primary" data-prepare-access="${esc(target.id)}">Descargar acceso</button>
-      </section>
-      <form id="prepare-device-sync-form" class="device-preparation-step sync-step">
-        <input type="hidden" name="evaluatorId" value="${esc(target.id)}"><input type="hidden" name="evaluator" value="${esc(target.name)}"><input type="hidden" name="role" value="${esc(target.role)}">
-        <div class="device-step-number">2</div><div><span>SINCRONIZACIÓN DRIVE · DESPUÉS DE INGRESAR</span><h3>Conectar este usuario con la base central</h3><p>Usa exactamente el token registrado en Apps Script para <b>${esc(target.id)}</b>.</p>
-          <div class="device-preparation-fields"><label>URL del servicio<input name="endpoint" type="url" value="${esc(endpoint)}" placeholder="https://script.google.com/macros/s/.../exec" required></label><label>Token individual de Apps Script<input name="deviceToken" type="password" minlength="24" autocomplete="new-password" required></label></div>
-          <code>Perfil-Sync-${esc(target.id)}.json</code><small class="device-preparation-help">Se instala desde “Sincronización” después de iniciar sesión. Nunca se importa en la bienvenida.</small>
-        </div><button type="submit" class="secondary">Descargar Perfil-Sync</button>
-      </form>
-      <div class="device-preparation-result" id="device-preparation-result" role="status">Primero entrega el acceso local. El perfil de Drive puede prepararse después, cuando Apps Script esté desplegado.</div>
+  function authEnvelope(action,payload={}){
+    const config=window.FenologiaSync?.getConfig?.()||{};
+    const evaluatorId=safe(state.session?.id)||safe(window.FenologiaAdmin?.config?.()?.users?.[0]?.id);
+    if(!evaluatorId||!safe(config.deviceToken))throw new AccessError('NO_PROFILE','Este dispositivo no tiene una credencial central activa.');
+    return {endpoint:config.endpoint,body:{action,evaluatorId,deviceToken:config.deviceToken,...payload}};
+  }
+
+  function adminRequest(action,payload={}){const request=authEnvelope(action,payload);return post(request.endpoint,request.body);}
+  function bootstrapAdmin(values){return post(values.endpoint,{action:'bootstrap-admin',setupCode:values.setupCode,name:values.name,username:values.username});}
+  function createUser(user){return adminRequest('create-user',{user});}
+  function updateUser(user){return adminRequest('update-user',{user});}
+  function setUserActive(targetUserId,active){return adminRequest('set-user-active',{targetUserId,active});}
+  function createActivation(targetUserId){return adminRequest('create-activation',{targetUserId});}
+  function redeemActivation(endpoint,activationCode){return post(endpoint,{action:'redeem-activation',activationCode});}
+  function verifyCentralUser(){return adminRequest('ping');}
+
+  function activationParams(value=location.href){
+    try{const url=new URL(value,location.href);return {code:safe(url.searchParams.get('activate')),endpoint:safe(url.searchParams.get('server'))};}
+    catch{return {code:'',endpoint:''};}
+  }
+
+  function activationLink(activation){
+    const url=new URL(location.origin+location.pathname);
+    url.searchParams.set('activate',activation.code);url.searchParams.set('server',endpointFromConfig());
+    return url.toString();
+  }
+
+  function qrSvg(value){
+    if(typeof window.qrcode!=='function')return '<div class="activation-qr-fallback">QR no disponible</div>';
+    const qr=window.qrcode(0,'M');qr.addData(String(value));qr.make();return qr.createSvgTag({cellSize:5,margin:2,scalable:true});
+  }
+
+  function activationModal(activation,title){
+    const link=activationLink(activation);
+    return `<div class="admin-modal-backdrop" id="admin-modal"><section class="admin-modal activation-share-modal">
+      <div class="admin-modal-head"><div><span>ACCESO DE UN SOLO USO</span><h2>${esc(title||'Activar dispositivo')}</h2></div><button type="button" data-close-admin-modal>×</button></div>
+      <div class="activation-share-grid">
+        <div class="activation-qr" aria-label="Código QR de activación">${qrSvg(link)}</div>
+        <div class="activation-share-copy"><span>${esc(activation.user?.role||'Usuario')}</span><h3>${esc(activation.user?.name||'')}</h3><p>Usuario: <b>@${esc(activation.user?.username||'')}</b> · ${esc(activation.user?.id||'')}</p><code>${esc(activation.code)}</code><small>Vence: ${esc(formatExpiry(activation.expiresAt))}. Solo puede usarse una vez.</small></div>
+      </div>
+      <label class="activation-link-field">Enlace completo<input id="activation-link" value="${esc(link)}" readonly></label>
+      <div class="admin-modal-actions"><button class="secondary" type="button" id="copy-activation-link">Copiar enlace</button><button class="primary" type="button" id="share-activation-link">Compartir acceso</button></div>
     </section></div>`;
   }
 
-  function openDevicePreparation(userId){
-    if(state?.session?.role!=='Administrador')return showToast('Solo el Administrador puede preparar dispositivos.');
-    const config=window.FenologiaAdmin?.config?.();
-    const target=config?.users?.find(user=>user.id===userId&&user.active!==false);
-    if(!target)return showToast('El usuario no existe o está inactivo.');
-    const host=document.querySelector('#admin-modal-host');
-    if(!host)return showToast('Abre “Usuarios y roles” para preparar el dispositivo.');
-    host.innerHTML=devicePreparationModal(target);
+  function showActivation(activation,title){
+    let host=document.querySelector('#admin-modal-host');
+    if(!host){host=document.createElement('div');host.id='admin-modal-host';document.body.appendChild(host);}
+    host.innerHTML=activationModal(activation,title);
   }
 
-  async function alignEvaluatorPermissions(){
-    try{
-      if(state?.session?.role!=='Administrador') return;
-      const config=window.FenologiaAdmin?.config?.();
-      if(!config||!Array.isArray(config.users)) return;
-      let changed=false;
-      config.users.forEach(user=>{
-        const next=normalizedPermissions(user);
-        if(JSON.stringify(next)!==JSON.stringify(user.permissions||[])){
-          user.permissions=next;
-          user.updatedAt=now();
-          changed=true;
-        }
-      });
-      if(!changed) return;
-      config.revision=Number(config.revision||0)+1;
-      config.updatedAt=now();
-      localStorage.setItem(CACHE_KEY,JSON.stringify(config));
-      localStorage.setItem('fenologia-admin-config-v1',JSON.stringify(config));
-      if(window.FenologiaDB?.isReady?.()&&!window.FenologiaDB?.isFallback?.()) await window.FenologiaDB.setSetting(CONFIG_KEY,config);
-    }catch(error){console.warn('No se pudieron alinear los permisos de los usuarios:',error);}
+  function renderActivation(prefill=activationParams()){
+    activationScreen=true;
+    const endpoint=prefill.endpoint||endpointFromConfig();
+    app.innerHTML=`<main class="login-page activation-page">
+      <section class="login-hero"><div class="brand-mark">${icons.leaf}</div><span class="eyebrow">ACTIVACIÓN SEGURA</span><h1>Fenología</h1><p>Configura este dispositivo con el QR, enlace o código entregado por el Administrador.</p><div class="hero-points"><span>${icons.check} Código de un solo uso</span><span>${icons.check} PIN privado</span><span>${icons.check} Trabajo offline después de activar</span></div></section>
+      <section class="login-card activation-card"><div><span class="eyebrow green">NUEVO ACCESO</span><h2>Activar dispositivo</h2><p>Crea un PIN que solo tú conocerás.</p></div>
+        <form id="device-activation-form">
+          <label>Código o enlace de activación<input name="activation" value="${esc(prefill.code||'')}" placeholder="ABCD-2345 o pega el enlace" autocomplete="one-time-code" required></label>
+          <details ${prefill.endpoint?'open':''}><summary>Servidor central</summary><label>URL de Apps Script<input name="endpoint" type="url" value="${esc(endpoint)}" required></label></details>
+          <label>Crea tu PIN (6 a 12 números)<input name="pin" type="password" inputmode="numeric" minlength="6" maxlength="12" pattern="[0-9]{6,12}" autocomplete="new-password" required></label>
+          <label>Repite el PIN<input name="pinConfirmation" type="password" inputmode="numeric" minlength="6" maxlength="12" pattern="[0-9]{6,12}" autocomplete="new-password" required></label>
+          <button class="primary wide">Activar y entrar <span>→</span></button><button class="secondary wide" type="button" data-cancel-activation>Volver al ingreso</button>
+        </form><p class="activation-note">Después de activar, el ingreso normal será con Usuario + PIN. No necesitas guardar archivos JSON.</p>
+      </section></main>`;
   }
 
   function decorateLogin(){
-    document.querySelector('.demo-note')?.remove();
-    const button=document.querySelector('#login-import-config');
-    if(button&&button.textContent!=='Importar acceso') button.textContent='Importar acceso';
-    const card=button?.closest('.config-login-import');
-    const title=card?.querySelector('b');
-    const text=card?.querySelector('p');
-    if(title&&!title.textContent.includes('configurado para')&&title.textContent!=='Configurar este dispositivo') title.textContent='Configurar este dispositivo';
-    const accessText='Importa el archivo de acceso entregado por el Administrador.';
-    if(text&&text.textContent!==accessText) text.textContent=accessText;
+    if(state.session||activationScreen)return;
+    const card=document.querySelector('.login-card');if(!card)return;
+    const setupEndpoint=card.querySelector('#first-admin-form [name="endpoint"]');if(setupEndpoint&&!safe(setupEndpoint.value))setupEndpoint.value=DEFAULT_ENDPOINT;
+    if(card.querySelector('[data-open-activation]'))return;
+    card.insertAdjacentHTML('beforeend','<div class="config-login-import"><b>¿Recibiste un acceso?</b><p>Escanea el QR o escribe el código temporal.</p><button class="secondary" type="button" data-open-activation>Activar este dispositivo</button></div>');
   }
-
-  function decorateSecurity(){
-    if(state?.session?.role!=='Administrador'||state.view!=='cleanup-security') return;
-    document.querySelectorAll('[data-download-cleanup-profile]').forEach(button=>{
-      if(button.textContent!=='Descargar acceso') button.textContent='Descargar acceso';
-      const title='Archivo completo para configurar el dispositivo e ingresar con nombre y DNI.';
-      if(button.title!==title) button.title=title;
-    });
-    const heading=document.querySelector('.security-profile-list')?.closest('.panel')?.querySelector('.panel-head h2');
-    if(heading&&heading.textContent!=='Evaluadores y códigos semanales') heading.textContent='Evaluadores y códigos semanales';
-    const head=document.querySelector('.security-profile-list')?.closest('.panel')?.querySelector('.panel-head>div');
-    if(head&&!head.querySelector('.access-security-note')){
-      const note=document.createElement('p');
-      note.className='access-security-note';
-      note.textContent='Aquí se muestran solo usuarios con rol Evaluador. Supervisor y Administrador no requieren autorización semanal de limpieza.';
-      head.appendChild(note);
-    }
-  }
-
-  function decorateUsers(){
-    if(state?.session?.role!=='Administrador'||state.view!=='users') return;
-    document.querySelectorAll('.admin-user-card').forEach(card=>{
-      if(card.querySelector('[data-prepare-user-device]')) return;
-      card.querySelector('[data-download-user-access]')?.remove();
-      const text=card.querySelector('.admin-user-main small')?.textContent||'';
-      const match=text.match(/\b(?:EVA|SUP|ADM)-\d+\b/);
-      const userId=match?.[0];
-      if(!userId||userId===state.session?.id) return;
-      const actions=card.querySelector('.admin-row-actions');
-      if(!actions) return;
-      const button=document.createElement('button');
-      button.type='button';
-      button.className='primary';
-      button.dataset.prepareUserDevice=userId;
-      button.textContent='Preparar dispositivo';
-      button.title='Generar el acceso local y, cuando corresponda, el perfil individual de Drive.';
-      actions.prepend(button);
-    });
-  }
-
-  function decorate(){
-    decorateLogin();
-    decorateSecurity();
-    decorateUsers();
-  }
-
-  document.addEventListener('click',async event=>{
-    const prepareButton=event.target.closest?.('[data-prepare-user-device]');
-    if(prepareButton){event.preventDefault();event.stopImmediatePropagation();openDevicePreparation(prepareButton.dataset.prepareUserDevice);return;}
-    const accessButton=event.target.closest?.('[data-prepare-access]');
-    if(accessButton){event.preventDefault();event.stopImmediatePropagation();await downloadAccess(accessButton.dataset.prepareAccess);const result=document.querySelector('#device-preparation-result');if(result)result.textContent='Acceso local descargado. En el celular del destinatario usa “Importar acceso” antes de iniciar sesión.';return;}
-    const securityButton=event.target.closest?.('[data-download-cleanup-profile]');
-    if(securityButton){
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      downloadAccess(securityButton.dataset.downloadCleanupProfile);
-      return;
-    }
-    const userButton=event.target.closest?.('[data-download-user-access]');
-    if(userButton){
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      downloadAccess(userButton.dataset.downloadUserAccess);
-    }
-  },true);
 
   document.addEventListener('submit',async event=>{
-    if(event.target.id!=='prepare-device-sync-form')return;
+    if(event.target.id!=='device-activation-form')return;
     event.preventDefault();event.stopImmediatePropagation();
+    const data=new FormData(event.target);const pin=safe(data.get('pin')),confirmation=safe(data.get('pinConfirmation'));
+    if(!/^\d{6,12}$/.test(pin))return showToast('El PIN debe tener entre 6 y 12 números.');
+    if(pin!==confirmation)return showToast('Los PIN no coinciden.');
+    let raw=safe(data.get('activation')),endpoint=safe(data.get('endpoint')),code=raw;
+    if(/^https?:\/\//i.test(raw)){const parsed=activationParams(raw);code=parsed.code;endpoint=parsed.endpoint||endpoint;}
     try{
-      const values=Object.fromEntries(new FormData(event.target));
-      if(!window.FenologiaSync?.createProfile)throw new Error('El módulo de sincronización todavía no está disponible.');
-      const profile=await window.FenologiaSync.createProfile(values);
-      event.target.deviceToken.value='';
-      const result=document.querySelector('#device-preparation-result');
-      if(result)result.textContent=`Perfil ${profile.evaluatorId} descargado. Instálalo únicamente después de ingresar como ${profile.evaluator}.`;
-      showToast(`Perfil individual preparado para ${profile.evaluatorId}.`);
-    }catch(error){showToast(error.message||'No se pudo preparar el perfil individual.');}
+      const result=await redeemActivation(endpoint,normalizeCode(code));
+      await window.FenologiaSync.saveConfig({...window.FenologiaSync.getConfig(),enabled:true,transport:'apps-script',endpoint,deviceToken:result.profile.deviceToken});
+      await window.FenologiaAdmin.installActivatedUser(result.profile,pin,endpoint);
+      activationScreen=false;history.replaceState({},'',location.pathname);render();showToast('Dispositivo activado correctamente.');
+      window.FenologiaSync.refreshCentralConfig().catch(()=>{});
+    }catch(error){showToast(error.code==='ACTIVATION_EXPIRED'?'El código venció. Solicita uno nuevo al Administrador.':error.message||'No se pudo activar el dispositivo.');}
   },true);
 
-  const observer=new MutationObserver(mutations=>{
-    if(!mutations.some(mutation=>mutation.addedNodes.length)) return;
-    decorate();
-  });
+  document.addEventListener('click',async event=>{
+    if(event.target.closest('[data-open-activation]')){event.preventDefault();renderActivation({code:'',endpoint:endpointFromConfig()});return;}
+    if(event.target.closest('[data-cancel-activation]')){activationScreen=false;history.replaceState({},'',location.pathname);render();return;}
+    if(event.target.closest('#copy-activation-link')){
+      const link=document.querySelector('#activation-link')?.value||'';
+      try{await navigator.clipboard.writeText(link);showToast('Enlace de activación copiado.');}catch{showToast('No se pudo copiar automáticamente.');}
+      return;
+    }
+    if(event.target.closest('#share-activation-link')){
+      const link=document.querySelector('#activation-link')?.value||'';
+      if(navigator.share){try{await navigator.share({title:'Acceso Fenología',text:'Activa tu acceso de Fenología.',url:link});return;}catch(error){if(error.name==='AbortError')return;}}
+      try{await navigator.clipboard.writeText(link);showToast('Enlace copiado para compartir.');}catch{showToast('Comparte el QR mostrado en pantalla.');}
+    }
+  },true);
+
+  const observer=new MutationObserver(mutations=>{if(mutations.some(mutation=>mutation.addedNodes.length))decorateLogin();});
   observer.observe(document.querySelector('#app')||document.body,{childList:true,subtree:true});
 
   window.addEventListener('fenologia-app-ready',()=>{
-    alignEvaluatorPermissions().finally(decorate);
+    const params=activationParams();if(params.code&&!state.session)renderActivation(params);else decorateLogin();
   },{once:true});
+  setTimeout(()=>{const params=activationParams();if(params.code&&!state.session)renderActivation(params);else decorateLogin();},0);
 
-  setTimeout(()=>alignEvaluatorPermissions().finally(decorate),0);
-  decorate();
-  window.FenologiaUserAccess={version:VERSION,downloadAccess,openDevicePreparation};
+  window.FenologiaAccess={version:VERSION,defaultEndpoint:()=>DEFAULT_ENDPOINT,bootstrapAdmin,createUser,updateUser,setUserActive,createActivation,redeemActivation,verifyCentralUser,showActivation,renderActivation,activationParams};
 })();

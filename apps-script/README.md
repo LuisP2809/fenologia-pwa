@@ -1,4 +1,4 @@
-# Servicio central de Fenología 0.17.0
+# Servicio central de Fenología 0.18.0
 
 Este directorio contiene el backend que crea y mantiene libros nativos de Google Sheets. No se despliega automáticamente desde el repositorio y no contiene credenciales.
 
@@ -6,10 +6,10 @@ Este directorio contiene el backend que crea y mantiene libros nativos de Google
 
 1. Crea un proyecto independiente en Google Apps Script con la cuenta propietaria de la base.
 2. Copia `Code.gs` y activa la visualización del manifiesto para copiar `appsscript.json`.
-3. Ejecuta una vez `setupFenologia()` y acepta los permisos solicitados. En una instalación nueva se crearán una carpeta central y el libro `FENOLOGIA_CONTROL_0_17_0`.
-4. Para registrar un dispositivo crea las propiedades temporales `FENOLOGIA_PROVISION_ID`, `FENOLOGIA_PROVISION_NAME` y `FENOLOGIA_PROVISION_ROLE`; luego ejecuta `provisionSyncUserFromProperties()` y guarda el token mostrado en el registro. Las propiedades temporales se eliminan después de una ejecución correcta. Repite con los roles `Evaluador`, `Supervisor` y `Administrador`.
+3. Ejecuta una vez `setupFenologia()` y acepta los permisos solicitados. En una instalación nueva se crearán una carpeta central y el libro `FENOLOGIA_CONTROL_0_18_0`.
+4. Con `USUARIOS_SYNC` vacío, ejecuta `prepareInitialAdmin()`. Copia privadamente el `setupCode` mostrado; vence en 24 horas y solo crea `ADM-001`.
 5. Despliega como aplicación web: ejecutar como propietario y acceso para cualquier usuario. La autorización real de la API la realizan el ID y el token de cada dispositivo.
-6. Copia la URL terminada en `/exec` en el perfil local de la PWA. Usa primero un ambiente y una cuenta de prueba.
+6. En la pantalla inicial de la PWA ingresa nombre, usuario, PIN y `setupCode`. Después crea los demás usuarios desde **Usuarios y roles** y comparte su QR o código temporal.
 
 ## Estructura creada
 
@@ -29,21 +29,24 @@ Este directorio contiene el backend que crea y mantiene libros nativos de Google
 - Solo un Administrador activo puede publicar la configuración operativa; el servidor elimina cualquier credencial antes de guardarla.
 - Catálogos, asignaciones, campañas, roles y estados de usuario se propagan en la siguiente conexión.
 - Al desactivar un usuario se inhabilita su fila central; el siguiente contacto rechaza el token y cierra la sesión del dispositivo.
+- Los códigos de activación vencen en 24 horas, se guardan mediante hash y se eliminan al usarse.
+- Cada activación rota el token del usuario, por lo que un acceso anterior deja de sincronizar.
+- Si se pierde el dispositivo principal, `prepareAdminRecovery()` genera un código temporal para reinstalar `ADM-001`; no crea otro Administrador.
 
-## Actualización desde 0.16.0
+## Actualización desde 0.17.0 con reinicio de acceso
 
 1. Sustituye `Code.gs` y `appsscript.json` en el proyecto existente.
-2. Ejecuta `setupFenologia()` una vez para crear la hoja `CONFIG_CENTRAL` sin reemplazar el libro ni las evaluaciones existentes.
+2. Ejecuta `setupFenologia()` una vez para actualizar las cabeceras sin reemplazar el libro ni las evaluaciones existentes.
 3. Crea una versión nueva en **Implementar > Administrar implementaciones** y actualiza la implementación web existente.
-4. Comprueba que la URL `/exec` se mantenga y prueba primero con el Administrador. Los tokens y perfiles 0.16.0 existentes no necesitan regenerarse.
-5. La primera conexión del Administrador publica el catálogo y el directorio operativo actuales.
+4. Con la hoja `USUARIOS_SYNC` vacía, ejecuta `prepareInitialAdmin()` y usa el código en la PWA 0.18.0.
+5. Comprueba que la URL `/exec` se mantenga. Los perfiles JSON y tokens anteriores quedan reemplazados deliberadamente.
 
-Actualiza primero Apps Script y después la PWA. Si durante la transición un dispositivo 0.17.0 encuentra todavía el servicio 0.16.0, seguirá enviando evaluaciones y consultando el consolidado, pero mostrará pendiente la configuración operativa hasta que el servidor sea actualizado.
+Actualiza primero Apps Script y después la PWA. No actives 0.18.0 contra el servicio 0.17.0 porque el servidor anterior no conoce los códigos temporales.
 
 ## Seguridad
 
 - No compartas el libro de control con los Evaluadores.
-- Entrega a cada celular únicamente su propio perfil/token.
-- Para revocar un dispositivo ejecuta `revokeSyncUser('EVA-01')` y genera un token nuevo si vuelve a autorizarse.
-- Borra los archivos descargados que contengan tokens una vez instalado el perfil.
+- Comparte cada QR o código únicamente con su destinatario.
+- Desactiva usuarios desde la PWA; para recuperación técnica sigue disponible `revokeSyncUser('EVA-001')`.
+- Si un enlace se comparte por error, genera un **Nuevo acceso**: el código anterior vencerá o quedará reemplazado al activarse el nuevo.
 - Primero prueba con datos ficticios. El despliegue y la cuenta de Drive deben aprobarse por separado.
