@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.18.1';
+  const VERSION = '0.19.0';
   const SYSTEM_EPOCH = 'fresh-start-v2';
   const CONFIG_KEY = 'admin-config-v2';
   const MAP_KEY = 'admin-map-v1';
@@ -329,68 +329,113 @@
     };
   }
 
-  function permissionsHtml(selected=[]){
-    const set=new Set(selected);
-    return PERMISSIONS.map(([key,label])=>`<label class="admin-check"><input type="checkbox" name="permissions" value="${key}" ${set.has(key)?'checked':''}><span>${label}</span></label>`).join('');
-  }
-
-  function adminUserFeedback(form,message='',kind='error'){
-    const node=form?.querySelector('[data-admin-user-feedback]');
-    if(!node)return;
-    node.textContent=message;
-    node.dataset.kind=kind;
-    node.hidden=!message;
-  }
-
-  function adminUserBusy(form,busy,creating){
-    const button=form?.querySelector('[data-admin-user-submit]');
-    if(!button)return;
-    form.dataset.submitting=busy?'true':'false';
-    button.disabled=busy;
-    button.textContent=busy?(creating?'Creando usuario…':'Guardando cambios…'):(creating?'Crear y generar acceso':'Guardar cambios');
-  }
-
-  function adminUserErrorMessage(error){
+  function centralUserErrorMessage(error){
     if(error?.code==='OFFLINE')return 'Conecta este dispositivo a Internet para crear el usuario.';
     if(error?.code==='NO_PROFILE')return 'Este Administrador no tiene una credencial central activa en este dispositivo.';
     if(error?.code==='NETWORK_ERROR')return 'No se pudo contactar a Apps Script. Revisa la conexión e intenta nuevamente.';
     if(error?.code==='REQUEST_TIMEOUT')return 'Apps Script tardó demasiado en responder. Verifica la conexión e intenta nuevamente.';
-    if(error?.code==='INVALID_RESPONSE')return 'Apps Script respondió con un formato inesperado. Comprueba que la implementación 0.18.0 siga activa.';
+    if(error?.code==='INVALID_RESPONSE')return 'Apps Script respondió con un formato inesperado. Comprueba que la implementación 0.19.0 siga activa.';
     if(error?.code==='USERNAME_EXISTS')return 'Ese nombre de usuario ya existe. Escribe uno diferente.';
-    return error?.message||'No se pudo guardar el usuario central.';
+    return error?.message||'No se pudo completar la operación central.';
   }
 
-  function userModal(user=null){
-    const editing=Boolean(user);
-    const selected=user?.permissions || rolePermissions(user?.role || 'Evaluador');
-    return `<div class="admin-modal-backdrop" id="admin-modal"><section class="admin-modal">
-      <div class="admin-modal-head"><div><span>${editing?'EDITAR USUARIO':'NUEVO USUARIO'}</span><h2>${editing?esc(user.name):'Crear acceso central'}</h2></div><button type="button" data-close-admin-modal>×</button></div>
-      <form id="admin-user-form" class="admin-form">
-        <input type="hidden" name="id" value="${esc(user?.id || '')}">
-        <label>Nombre completo<input name="name" value="${esc(user?.name || '')}" required></label>
-        <label>Usuario<input name="username" value="${esc(user?.username || '')}" pattern="[a-z0-9._-]{3,30}" autocapitalize="none" spellcheck="false" ${editing?'readonly':''} required><small>Se guardará en minúsculas para iniciar sesión; no puede repetirse.</small></label>
-        <label>Rol<select name="role"><option ${user?.role==='Evaluador'?'selected':''}>Evaluador</option><option ${user?.role==='Supervisor'?'selected':''}>Supervisor</option></select></label>
-        <label class="admin-switch"><input type="checkbox" name="active" ${user?.active!==false?'checked':''}><span>Usuario activo</span></label>
-        <fieldset><legend>Permisos del dispositivo</legend><div class="admin-check-grid" id="admin-permission-grid">${permissionsHtml(selected)}</div></fieldset>
-        <p class="admin-form-feedback" data-admin-user-feedback role="alert" hidden></p>
-        <div class="admin-modal-actions"><button type="button" class="secondary" data-close-admin-modal>Cancelar</button><button type="submit" class="primary" data-admin-user-submit>${editing?'Guardar cambios':'Crear y generar acceso'}</button></div>
-      </form>
-    </section></div>`;
+  function mergeCentralUsers(centralUsers=[]){
+    const previous=new Map((adminConfig?.users||[]).map(user=>[upper(user.id),user]));
+    adminConfig.users=centralUsers.map(item=>{
+      const before=previous.get(upper(item.id))||{};
+      const role=['Evaluador','Supervisor','Administrador'].includes(item.role)?item.role:'Evaluador';
+      return {
+        id:upper(item.id),username:safe(item.username).toLowerCase(),name:safe(item.name),role,active:item.active!==false,
+        pinHash:before.pinHash||'',pinSalt:before.pinSalt||'',pinAlgorithm:before.pinAlgorithm||'',pinIterations:Number(before.pinIterations||0)||null,
+        permissions:Array.isArray(before.permissions)&&before.permissions.length?[...before.permissions]:rolePermissions(role),
+        createdAt:before.createdAt||item.createdAt||now(),updatedAt:now()
+      };
+    }).filter(user=>user.id&&user.username&&user.name);
+    syncRuntime();
   }
 
-  function adminUsersView(){
+  function centralUserFeedback(form,message='',kind='error'){
+    const node=form?.querySelector('[data-central-user-feedback]');
+    if(!node)return;
+    node.textContent=message;node.dataset.kind=kind;node.hidden=!message;
+  }
+
+  function centralUserBusy(form,busy){
+    const button=form?.querySelector('[data-central-user-submit]');
+    if(!button)return;
+    form.dataset.submitting=busy?'true':'false';button.disabled=busy;button.textContent=busy?'Creando usuario…':'Crear y generar acceso';
+  }
+
+  async function persistCentralUsers(action,detail){
+    try{await persistConfig(action,detail);return true;}
+    catch(error){console.error(error);showToast('El usuario quedó guardado en el servidor, pero la lista local no terminó de actualizarse. Pulsa Actualizar usuarios.');return false;}
+  }
+
+  function bindCentralUsersView(){
+    const form=document.querySelector('#central-user-form');
+    form?.addEventListener('submit',async event=>{
+      event.preventDefault();event.stopPropagation();
+      if(form.dataset.submitting==='true')return;
+      const data=new FormData(form),name=safe(data.get('name')),username=safe(data.get('username')).toLowerCase(),role=safe(data.get('role'));
+      const fail=message=>{centralUserFeedback(form,message);showToast(message);};
+      if(!name)return fail('Ingresa el nombre completo.');
+      if(!/^[a-z0-9._-]{3,30}$/.test(username))return fail('El usuario debe tener entre 3 y 30 caracteres válidos.');
+      centralUserBusy(form,true);centralUserFeedback(form,'Creando el usuario y preparando su acceso…','progress');
+      try{
+        const result=await window.FenologiaAccess.createUser({name,username,role});
+        mergeCentralUsers(result.users||[...(adminConfig.users||[]),result.user]);
+        await persistCentralUsers('Usuario creado',{usuario:result.user?.name||name,rol:result.user?.role||role});
+        adminUsersView(result.activation,'Nuevo acceso: compártelo con el usuario');
+        showToast('Usuario creado. Comparte el QR, enlace o código.');
+      }catch(error){centralUserBusy(form,false);fail(centralUserErrorMessage(error));}
+    });
+
+    document.querySelector('#refresh-central-users')?.addEventListener('click',async event=>{
+      const button=event.currentTarget;button.disabled=true;button.textContent='Actualizando…';
+      try{const result=await window.FenologiaAccess.listUsers();mergeCentralUsers(result.users||[]);await persistCentralUsers('Usuarios centrales actualizados',{});adminUsersView();showToast('Lista de usuarios actualizada.');}
+      catch(error){button.disabled=false;button.textContent='Actualizar usuarios';showToast(centralUserErrorMessage(error));}
+    });
+
+    document.querySelectorAll('[data-toggle-central-user]').forEach(button=>button.addEventListener('click',async()=>{
+      const user=(adminConfig.users||[]).find(item=>item.id===button.dataset.toggleCentralUser);if(!user)return;
+      const active=!user.active;button.disabled=true;
+      try{const result=await window.FenologiaAccess.setUserActive(user.id,active);mergeCentralUsers(result.users||[]);await persistCentralUsers(active?'Usuario activado':'Usuario desactivado',{usuario:user.name});adminUsersView();showToast(active?'Usuario activado.':'Usuario desactivado.');}
+      catch(error){button.disabled=false;showToast(centralUserErrorMessage(error));}
+    }));
+
+    document.querySelectorAll('[data-new-central-activation]').forEach(button=>button.addEventListener('click',async()=>{
+      button.disabled=true;
+      try{const result=await window.FenologiaAccess.createActivation(button.dataset.newCentralActivation);adminUsersView(result.activation,'Acceso temporal renovado');}
+      catch(error){button.disabled=false;showToast(centralUserErrorMessage(error));}
+    }));
+    window.FenologiaAccess?.bindActivationPanel?.(document);
+  }
+
+  function adminUsersView(activation=null,activationTitle=''){
     if(!isAdmin()){state.view='home';return homeView();}
     const rows=(adminConfig?.users || []).map(user=>`<article class="admin-user-card ${user.active?'':'inactive'}">
       <div class="admin-user-avatar">${esc(user.name.split(' ').map(part=>part[0]).slice(0,2).join(''))}</div>
-      <div class="admin-user-main"><b>${esc(user.name)}</b><small>@${esc(user.username)} · ${esc(user.id)}</small><div class="admin-permission-tags">${(user.permissions || []).map(permission=>`<span>${esc(PERMISSIONS.find(item=>item[0]===permission)?.[1] || permission)}</span>`).join('')}</div></div>
+      <div class="admin-user-main"><b>${esc(user.name)}</b><small>@${esc(user.username)} · ${esc(user.id)}</small></div>
       <em class="admin-role">${esc(user.role)}</em>
       <span class="admin-status ${user.active?'active':'inactive'}">${user.active?'Activo':'Inactivo'}</span>
-      <div class="admin-row-actions">${user.role!=='Administrador'?`<button class="primary" data-new-user-activation="${esc(user.id)}">Generar acceso</button><button class="secondary" data-edit-admin-user="${esc(user.id)}">Editar</button><button class="${user.active?'danger-soft':'secondary'}" data-toggle-admin-user="${esc(user.id)}">${user.active?'Desactivar':'Activar'}</button>`:'<span class="admin-primary-user">Administrador principal</span>'}</div>
+      <div class="admin-row-actions">${user.role!=='Administrador'?`<button class="primary" data-new-central-activation="${esc(user.id)}" ${user.active?'':'disabled'}>Nuevo acceso</button><button class="${user.active?'danger-soft':'secondary'}" data-toggle-central-user="${esc(user.id)}">${user.active?'Desactivar':'Activar'}</button>`:'<span class="admin-primary-user">Administrador principal</span>'}</div>
     </article>`).join('');
-    app.innerHTML=shell(`${titleBlock('ADMINISTRADOR','Usuarios y roles','Crea accesos, asigna roles y desactiva usuarios sin borrar sus evaluaciones.',`<button class="primary" id="new-admin-user">+ Nuevo usuario</button>`)}
-      <section class="metrics-grid three">${metric(adminConfig.users.length,'Usuarios registrados',icons.users)}${metric(activeUsers().length,'Usuarios activos',icons.check)}${metric(adminConfig.users.filter(user=>user.role==='Evaluador'&&user.active).length,'Evaluadores activos',icons.clipboard)}</section>
-      <section class="panel"><div class="panel-head"><div><span>ACCESOS CENTRALES</span><h2>Usuarios configurados</h2><p>Crea un usuario y comparte su QR o código temporal. Al desactivarlo se bloquea su próxima conexión, sin borrar registros.</p></div></div><div class="admin-user-list">${rows || '<div class="empty">Sin usuarios</div>'}</div></section>
-      <div id="admin-modal-host"></div>`);
+    app.innerHTML=shell(`${titleBlock('ADMINISTRADOR','Usuarios y roles','Crea usuarios y entrega su acceso mediante QR, enlace o código temporal.')}
+      <section class="central-user-grid">
+        <article class="panel central-user-create"><div class="panel-head"><div><span>NUEVO USUARIO</span><h2>Crear usuario</h2><p>El sistema asignará el ID y generará un acceso temporal automáticamente.</p></div></div>
+          <form id="central-user-form" class="central-user-form">
+            <label>Nombre completo<input name="name" autocomplete="name" required></label>
+            <label>Usuario<input name="username" pattern="[a-zA-Z0-9._-]{3,30}" autocapitalize="none" spellcheck="false" required><small>Se utilizará para iniciar sesión y no puede repetirse.</small></label>
+            <label>Rol<select name="role"><option>Evaluador</option><option>Supervisor</option></select></label>
+            <p class="admin-form-feedback" data-central-user-feedback role="alert" hidden></p>
+            <button class="primary" type="submit" data-central-user-submit ${navigator.onLine?'':'disabled'}>Crear y generar acceso</button>
+          </form>
+        </article>
+        <article class="panel central-user-status"><div class="panel-head"><div><span>ESTADO CENTRAL</span><h2>${activeUsers().length} usuarios activos</h2><p>Los códigos vencen en 24 horas y solo pueden usarse una vez.</p></div></div><button class="secondary" type="button" id="refresh-central-users" ${navigator.onLine?'':'disabled'}>Actualizar usuarios</button></article>
+      </section>
+      ${window.FenologiaAccess?.activationPanel?.(activation,activationTitle)||''}
+      <section class="panel"><div class="panel-head"><div><span>ACCESOS CENTRALES</span><h2>Usuarios configurados</h2><p>Desactivar bloquea la próxima conexión sin borrar evaluaciones. “Nuevo acceso” invalida el acceso anterior cuando el código sea utilizado.</p></div></div><div class="admin-user-list">${rows || '<div class="empty">Sin usuarios</div>'}</div></section>`);
+    bindCentralUsersView();
   }
 
   function catalogFields(){return Object.keys(adminConfig?.catalog?.lotesAgrupados || {}).sort((a,b)=>a.localeCompare(b,'es'));}
@@ -837,33 +882,6 @@
       state.view='home';render();return;
     }
 
-    if(event.target.id==='admin-user-form'){
-      event.preventDefault();event.stopImmediatePropagation();
-      const form=event.target;
-      if(form.dataset.submitting==='true')return;
-      adminUserFeedback(form);
-      const data=new FormData(form),id=safe(data.get('id')),role=safe(data.get('role')),name=safe(data.get('name')),username=safe(data.get('username')).toLowerCase();
-      const fail=message=>{adminUserFeedback(form,message);showToast(message);};
-      if(!name)return fail('Ingresa el nombre completo.');
-      if(!/^[a-z0-9._-]{3,30}$/.test(username))return fail('El usuario debe tener entre 3 y 30 caracteres válidos.');
-      let user=id?adminConfig.users.find(item=>item.id===id):null;
-      const creating=!user;
-      adminUserBusy(form,true,creating);
-      adminUserFeedback(form,creating?'Comprobando el acceso central y creando el usuario…':'Guardando los cambios…','progress');
-      try{
-        const central=creating?await window.FenologiaAccess.createUser({name,username,role}):await window.FenologiaAccess.updateUser({id,name,username,role});
-        if(creating){const created=central.user;user={id:created.id,username:created.username,name:created.name,role:created.role,active:true,pinHash:'',permissions:rolePermissions(created.role),createdAt:now(),updatedAt:now()};adminConfig.users.push(user);}
-        user.name=name;user.username=username;user.role=role;user.active=data.get('active')==='on';user.permissions=data.getAll('permissions');
-        if(!user.permissions.length)user.permissions=rolePermissions(role);
-        user.updatedAt=now();
-        await persistConfig(creating?'Usuario creado':'Usuario actualizado',{usuario:user.name,rol:user.role,estado:user.active?'activo':'inactivo'});
-        closeModal();adminUsersView();
-        if(creating&&central.activation)window.FenologiaAccess.showActivation(central.activation,'Nuevo acceso: compártelo con el usuario');
-        showToast(creating?'Usuario creado; comparte su QR o código.':'Usuario actualizado.');
-      }catch(error){adminUserBusy(form,false,creating);fail(adminUserErrorMessage(error));}
-      return;
-    }
-
     if(event.target.id==='admin-lot-form'){
       event.preventDefault();event.stopImmediatePropagation();
       const data=new FormData(event.target),original=safe(data.get('originalLot'));
@@ -940,23 +958,7 @@
   }
 
   document.addEventListener('click',async event=>{
-    if(event.target.closest('#new-admin-user')){document.querySelector('#admin-modal-host').innerHTML=userModal();return;}
-    const editUser=event.target.closest('[data-edit-admin-user]');if(editUser){const user=adminConfig.users.find(item=>item.id===editUser.dataset.editAdminUser);document.querySelector('#admin-modal-host').innerHTML=userModal(user);return;}
-    const newActivation=event.target.closest('[data-new-user-activation]');if(newActivation){
-      try{const result=await window.FenologiaAccess.createActivation(newActivation.dataset.newUserActivation);window.FenologiaAccess.showActivation(result.activation,'Acceso temporal renovado');}
-      catch(error){showToast(error.message||'No se pudo generar el acceso.');}
-      return;
-    }
-    const toggleUser=event.target.closest('[data-toggle-admin-user]');if(toggleUser){
-      const user=adminConfig.users.find(item=>item.id===toggleUser.dataset.toggleAdminUser);if(!user)return;
-      if(user.id===state.session.id&&user.active)return showToast('No puedes desactivar tu propio usuario.');
-      if(user.role==='Administrador'&&user.active&&adminConfig.users.filter(item=>item.role==='Administrador'&&item.active).length<=1)return showToast('Debe permanecer al menos un Administrador activo.');
-      const nextActive=!user.active;
-      try{await window.FenologiaAccess.setUserActive(user.id,nextActive);}catch(error){return showToast(error.message||'No se pudo cambiar el estado central.');}
-      user.active=nextActive;user.updatedAt=now();await persistConfig(user.active?'Usuario activado':'Usuario desactivado',{usuario:user.name});adminUsersView();return;
-    }
     if(event.target.closest('[data-close-admin-modal]')){closeModal();return;}
-    const roleSelect=event.target.closest('#admin-user-form [name="role"]');if(roleSelect)return;
 
     const tab=event.target.closest('[data-admin-catalog-tab]');if(tab){ui.catalogTab=tab.dataset.adminCatalogTab;adminCatalogsView();return;}
     if(event.target.closest('#new-admin-lot')){document.querySelector('#admin-modal-host').innerHTML=lotModal();return;}
@@ -1034,18 +1036,14 @@
       catch(error){showToast(error.message || 'No se pudo aplicar el paquete.');}
       event.target.value='';return;
     }
-    if(event.target.matches('#admin-user-form [name="role"]')){
-      const role=event.target.value,grid=document.querySelector('#admin-permission-grid');
-      if(grid)grid.innerHTML=permissionsHtml(rolePermissions(role));
-    }
   });
 
   document.addEventListener('input',event=>{
-    if(!event.target.matches('#admin-user-form [name="username"]')||event.target.readOnly)return;
+    if(!event.target.matches('#central-user-form [name="username"]'))return;
     const position=event.target.selectionStart;
     event.target.value=safe(event.target.value).toLowerCase().replace(/[^a-z0-9._-]/g,'');
     if(Number.isInteger(position))event.target.setSelectionRange(position,position);
-    adminUserFeedback(event.target.form);
+    centralUserFeedback(event.target.form);
   });
 
   async function installActivatedUser(profile,pin,endpoint){

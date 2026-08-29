@@ -64,7 +64,7 @@ await windowObject.FenologiaSync.ready;
 const preparedProfile=await windowObject.FenologiaSync.createProfile({
   endpoint:'https://script.google.com/macros/s/PRUEBA/exec',evaluatorId:'EVA-001',evaluator:'Evaluador 1',role:'Evaluador',deviceToken:'123456789012345678901234'
 });
-assert(preparedProfile.version==='0.18.0'&&preparedProfile.evaluatorId==='EVA-001','El núcleo no genera credenciales de recuperación 0.18.0.');
+assert(preparedProfile.version==='0.19.0'&&preparedProfile.evaluatorId==='EVA-001','El núcleo no genera credenciales de recuperación 0.19.0.');
 assert(downloads.at(-1)?.name==='Perfil-Sync-EVA-001.json','El asistente no descargó el nombre de perfil esperado.');
 const invalidatedProfile={...preparedProfile,version:'0.17.0'};
 let invalidatedRejected=false;
@@ -72,7 +72,7 @@ try{await windowObject.FenologiaSync.installProfile({size:JSON.stringify(invalid
 assert(invalidatedRejected,'Un perfil anterior al reinicio todavía pudo instalarse.');
 const compatibleProfile={...preparedProfile,version:'0.18.0'};
 await windowObject.FenologiaSync.installProfile({size:JSON.stringify(compatibleProfile).length,text:async()=>JSON.stringify(compatibleProfile)});
-assert(windowObject.FenologiaSync.getConfig().deviceToken===preparedProfile.deviceToken,'El perfil 0.16.0 instalado dejó de ser compatible.');
+assert(windowObject.FenologiaSync.getConfig().deviceToken===preparedProfile.deviceToken,'El perfil 0.18.0 instalado dejó de ser compatible.');
 let wrongOwnerRejected=false;
 try{await windowObject.FenologiaSync.installProfile({size:100,text:async()=>JSON.stringify({...preparedProfile,evaluatorId:'EVA-999'})});}catch{wrongOwnerRejected=true;}
 assert(wrongOwnerRejected,'El dispositivo aceptó un perfil perteneciente a otro usuario.');

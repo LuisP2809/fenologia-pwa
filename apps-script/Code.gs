@@ -1,10 +1,10 @@
-/* Fenología 0.18.0 · servicio central Google Sheets/Drive.
+/* Fenología 0.19.0 · servicio central Google Sheets/Drive.
  * Este archivo se instala como un proyecto independiente de Google Apps Script.
  * Activación simplificada por enlace/QR + código temporal de un solo uso.
  * No contiene tokens, IDs de Drive ni datos reales.
  */
 
-const FENOLOGIA_SYNC_VERSION = '0.18.0';
+const FENOLOGIA_SYNC_VERSION = '0.19.0';
 const CONTROL_ID_PROPERTY = 'FENOLOGIA_CONTROL_SPREADSHEET_ID';
 const ROOT_FOLDER_ID_PROPERTY = 'FENOLOGIA_ROOT_FOLDER_ID';
 const PENDING_ALERT_HOURS_PROPERTY = 'FENOLOGIA_PENDING_ALERT_HOURS';

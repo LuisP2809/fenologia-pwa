@@ -73,8 +73,8 @@ assert(userAccess.includes('FenologiaAdmin.installActivatedUser')&&userAccess.in
 assert(admin.includes("SYSTEM_EPOCH = 'fresh-start-v2'")&&appsScript.includes("systemEpoch:'fresh-start-v2'"),'Los accesos no pertenecen a la nueva etapa del sistema.');
 assert(admin.includes("payload.systemEpoch!==SYSTEM_EPOCH")&&admin.includes('quedó invalidado por el reinicio'),'La importación todavía permite accesos creados antes del reinicio.');
 assert(admin.includes('id="first-admin-form"')&&admin.includes('bootstrapAdmin')&&appsScript.includes("registerSyncUser('ADM-001'")&&admin.includes('Administrador principal'),'Falta la creación guiada y única del primer Administrador.');
-assert(sync.includes("new Set(['0.18.0'])"),'El reinicio todavía acepta perfiles JSON de etapas anteriores.');
-assert(sync.includes('legacyService:true')&&sync.includes('todavía debe actualizarse a 0.18.0'),'La transición al servicio 0.18.0 puede bloquear el envío de evaluaciones.');
+assert(sync.includes("new Set(['0.18.0','0.19.0'])"),'La versión 0.19.0 no conserva los perfiles 0.18.0 actuales.');
+assert(sync.includes('legacyService:true')&&sync.includes('todavía debe actualizarse a 0.19.0'),'La transición al servicio 0.19.0 puede bloquear el envío de evaluaciones.');
 assert(map.includes('getAnalysisRecords')&&!map.includes('records=state.records.filter(recordOk)'),'El mapa no consume el consolidado en línea compartido.');
 assert(sync.includes("['map','charts','sync-monitor']")&&sync.includes('fenologia-remote-snapshot'),'Mapa y gráficos no se actualizan al recibir el consolidado.');
 assert(admin.includes('centralSnapshot')&&admin.includes('applyCentralConfig')&&admin.includes('handleCentralDeactivation'),'La configuración administrativa no puede sincronizarse o aplicar una desactivación central.');

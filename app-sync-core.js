@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.18.0';
+  const VERSION='0.19.0';
   const OMITTED_KEYS=new Set(['sync','_sync','syncStatus','syncMessage','lastSyncAttemptAt']);
 
   function clone(value){

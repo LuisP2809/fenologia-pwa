@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.18.1';
+  const VERSION='0.19.0';
   const DEFAULT_ENDPOINT='https://script.google.com/macros/s/AKfycby4c2t4QzQsUy9_OdHA7MF8hmVknbbzDwrVvSiL0yj5KNkK4eZ02CtzfWjWqlWm5tSd/exec';
   let activationScreen=false;
 
@@ -44,6 +44,7 @@
 
   function adminRequest(action,payload={}){const request=authEnvelope(action,payload);return post(request.endpoint,request.body);}
   function bootstrapAdmin(values){return post(values.endpoint,{action:'bootstrap-admin',setupCode:values.setupCode,name:values.name,username:values.username});}
+  function listUsers(){return adminRequest('list-users');}
   function createUser(user){return adminRequest('create-user',{user});}
   function updateUser(user){return adminRequest('update-user',{user});}
   function setUserActive(targetUserId,active){return adminRequest('set-user-active',{targetUserId,active});}
@@ -84,6 +85,36 @@
     let host=document.querySelector('#admin-modal-host');
     if(!host){host=document.createElement('div');host.id='admin-modal-host';document.body.appendChild(host);}
     host.innerHTML=activationModal(activation,title);
+  }
+
+  function activationPanel(activation,title){
+    if(!activation)return '';
+    const link=activationLink(activation);
+    return `<section class="panel central-activation-panel" id="central-activation-panel">
+      <div class="panel-head"><div><span>ACCESO DE UN SOLO USO</span><h2>${esc(title||'Acceso listo para compartir')}</h2><p>El usuario puede escanear el QR o abrir el enlace en su dispositivo.</p></div></div>
+      <div class="activation-share-grid">
+        <div class="activation-qr" aria-label="Código QR de activación">${qrSvg(link)}</div>
+        <div class="activation-share-copy"><span>${esc(activation.user?.role||'Usuario')}</span><h3>${esc(activation.user?.name||'')}</h3><p>Usuario: <b>@${esc(activation.user?.username||'')}</b> · ${esc(activation.user?.id||'')}</p><code>${esc(activation.code)}</code><small>Vence: ${esc(formatExpiry(activation.expiresAt))}. Solo puede utilizarse una vez.</small></div>
+      </div>
+      <label class="activation-link-field">Enlace completo<input id="central-activation-link" value="${esc(link)}" readonly></label>
+      <div class="central-activation-actions"><button class="secondary" type="button" data-copy-central-activation>Copiar enlace</button><button class="primary" type="button" data-share-central-activation>Compartir acceso</button></div>
+    </section>`;
+  }
+
+  function bindActivationPanel(root=document){
+    const panel=root?.querySelector?.('#central-activation-panel') || (root?.id==='central-activation-panel'?root:null);
+    if(!panel)return;
+    const link=()=>panel.querySelector('#central-activation-link')?.value||'';
+    panel.querySelector('[data-copy-central-activation]')?.addEventListener('click',async()=>{
+      try{await navigator.clipboard.writeText(link());showToast('Enlace de activación copiado.');}
+      catch{showToast('No se pudo copiar automáticamente.');}
+    });
+    panel.querySelector('[data-share-central-activation]')?.addEventListener('click',async()=>{
+      const value=link();
+      if(navigator.share){try{await navigator.share({title:'Acceso Fenología',text:`Activa Fenología con el código ${activation.code}.`,url:value});return;}catch(error){if(error.name==='AbortError')return;}}
+      try{await navigator.clipboard.writeText(value);showToast('Enlace copiado para compartir.');}
+      catch{showToast('Comparte el QR mostrado en pantalla.');}
+    });
   }
 
   function renderActivation(prefill=activationParams()){
@@ -151,5 +182,5 @@
   },{once:true});
   setTimeout(()=>{const params=activationParams();if(params.code&&!state.session)renderActivation(params);else decorateLogin();},0);
 
-  window.FenologiaAccess={version:VERSION,defaultEndpoint:()=>DEFAULT_ENDPOINT,bootstrapAdmin,createUser,updateUser,setUserActive,createActivation,redeemActivation,verifyCentralUser,showActivation,renderActivation,activationParams};
+  window.FenologiaAccess={version:VERSION,defaultEndpoint:()=>DEFAULT_ENDPOINT,bootstrapAdmin,listUsers,createUser,updateUser,setUserActive,createActivation,redeemActivation,verifyCentralUser,showActivation,activationPanel,bindActivationPanel,renderActivation,activationParams};
 })();

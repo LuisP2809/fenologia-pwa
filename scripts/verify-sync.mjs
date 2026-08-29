@@ -15,7 +15,7 @@ vm.createContext(serverContext);
 vm.runInContext(`${serverSource}\n;globalThis.__serverTest={FENOLOGIA_SYNC_VERSION,FENO_HEADERS,BIO_HEADERS,PARAM_HEADERS,weekKey_,businessKey_,canonicalString_,fenologyRow_,biometryRow_,classifyEntry_,validateCentralConfig_,normalizeActivationCode_,formatActivationCode_,normalizeUsername_};`,serverContext,{filename:'apps-script/Code.gs'});
 const server=serverContext.__serverTest;
 
-assert(core.VERSION==='0.18.0'&&server.FENOLOGIA_SYNC_VERSION==='0.18.0','Cliente y servidor no corresponden a 0.18.0.');
+assert(core.VERSION==='0.19.0'&&server.FENOLOGIA_SYNC_VERSION==='0.19.0','Cliente y servidor no corresponden a 0.19.0.');
 assert(core.isoWeekInfo('2021-01-01').key==='2020-S53','La semana ISO falla al cruzar de año.');
 assert(core.isoWeekInfo('2024-12-30').key==='2025-S01','La primera semana ISO del año siguiente es incorrecta.');
 assert(server.FENO_HEADERS.length===44,'La hoja FENOLOGIA no conserva 44 columnas.');

@@ -1,4 +1,4 @@
-# Servicio central de Fenología 0.18.0
+# Servicio central de Fenología 0.19.0
 
 Este directorio contiene el backend que crea y mantiene libros nativos de Google Sheets. No se despliega automáticamente desde el repositorio y no contiene credenciales.
 
@@ -33,15 +33,24 @@ Este directorio contiene el backend que crea y mantiene libros nativos de Google
 - Cada activación rota el token del usuario, por lo que un acceso anterior deja de sincronizar.
 - Si se pierde el dispositivo principal, `prepareAdminRecovery()` genera un código temporal para reinstalar `ADM-001`; no crea otro Administrador.
 
-## Actualización desde 0.17.0 con reinicio de acceso
+## Actualización desde 0.18.0 conservando el Administrador
+
+1. Sustituye `Code.gs` en el proyecto existente y ejecuta `setupFenologia()` una vez.
+2. Actualiza la implementación web existente sin cambiar la URL `/exec`.
+3. No ejecutes `prepareInitialAdmin()` y no borres `USUARIOS_SYNC`: `ADM-001` y su token continúan vigentes.
+4. Publica después la PWA 0.19.0 y comprueba la pantalla directa de **Usuarios y roles**.
+
+Los nuevos usuarios reciben un código y QR de un solo uso. El servicio 0.19.0 conserva libros, catálogos y evaluaciones creados por 0.18.0.
+
+## Instalación limpia desde una versión anterior
 
 1. Sustituye `Code.gs` y `appsscript.json` en el proyecto existente.
 2. Ejecuta `setupFenologia()` una vez para actualizar las cabeceras sin reemplazar el libro ni las evaluaciones existentes.
 3. Crea una versión nueva en **Implementar > Administrar implementaciones** y actualiza la implementación web existente.
-4. Con la hoja `USUARIOS_SYNC` vacía, ejecuta `prepareInitialAdmin()` y usa el código en la PWA 0.18.0.
+4. Con la hoja `USUARIOS_SYNC` vacía, ejecuta `prepareInitialAdmin()` y usa el código en la PWA 0.19.0.
 5. Comprueba que la URL `/exec` se mantenga. Los perfiles JSON y tokens anteriores quedan reemplazados deliberadamente.
 
-Actualiza primero Apps Script y después la PWA. No actives 0.18.0 contra el servicio 0.17.0 porque el servidor anterior no conoce los códigos temporales.
+Actualiza primero Apps Script y después la PWA. No actives 0.19.0 contra un servicio anterior que no incluya los códigos temporales.
 
 ## Seguridad
 
