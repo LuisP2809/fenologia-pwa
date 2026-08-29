@@ -17,4 +17,9 @@
 .activation-note{margin:12px 0 0;color:#64766c;font-size:.86rem;line-height:1.45}
 .activation-qr-fallback{padding:48px 12px;color:#66796f;text-align:center}
 .admin-primary-user{font-size:.78rem;font-weight:800;color:#177245}
+.configured-device-note{padding-bottom:2px}
+.admin-form-feedback{grid-column:1/-1;margin:0;padding:11px 13px;border-radius:11px;background:#fff1f1;border:1px solid #efbcbc;color:#9f2727;font-weight:800;font-size:13px}
+.admin-form-feedback[data-kind="progress"]{background:#eef8f1;border-color:#b9ddc4;color:#12683d}
+.admin-form-feedback[hidden]{display:none}
+.admin-modal-actions button:disabled{opacity:.6;cursor:wait}
 @media(max-width:680px){.activation-share-grid{grid-template-columns:1fr}.activation-qr{max-width:260px;margin:auto}.activation-share-copy{text-align:center;justify-items:center}.activation-share-copy code{font-size:1.15rem}.activation-share-modal .admin-modal-actions{display:grid;grid-template-columns:1fr}.activation-page .login-card{padding-bottom:28px}}

@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.18.0';
+  const VERSION = '0.18.1';
   const SYSTEM_EPOCH = 'fresh-start-v2';
   const CONFIG_KEY = 'admin-config-v2';
   const MAP_KEY = 'admin-map-v1';
@@ -334,6 +334,32 @@
     return PERMISSIONS.map(([key,label])=>`<label class="admin-check"><input type="checkbox" name="permissions" value="${key}" ${set.has(key)?'checked':''}><span>${label}</span></label>`).join('');
   }
 
+  function adminUserFeedback(form,message='',kind='error'){
+    const node=form?.querySelector('[data-admin-user-feedback]');
+    if(!node)return;
+    node.textContent=message;
+    node.dataset.kind=kind;
+    node.hidden=!message;
+  }
+
+  function adminUserBusy(form,busy,creating){
+    const button=form?.querySelector('[data-admin-user-submit]');
+    if(!button)return;
+    form.dataset.submitting=busy?'true':'false';
+    button.disabled=busy;
+    button.textContent=busy?(creating?'Creando usuario…':'Guardando cambios…'):(creating?'Crear y generar acceso':'Guardar cambios');
+  }
+
+  function adminUserErrorMessage(error){
+    if(error?.code==='OFFLINE')return 'Conecta este dispositivo a Internet para crear el usuario.';
+    if(error?.code==='NO_PROFILE')return 'Este Administrador no tiene una credencial central activa en este dispositivo.';
+    if(error?.code==='NETWORK_ERROR')return 'No se pudo contactar a Apps Script. Revisa la conexión e intenta nuevamente.';
+    if(error?.code==='REQUEST_TIMEOUT')return 'Apps Script tardó demasiado en responder. Verifica la conexión e intenta nuevamente.';
+    if(error?.code==='INVALID_RESPONSE')return 'Apps Script respondió con un formato inesperado. Comprueba que la implementación 0.18.0 siga activa.';
+    if(error?.code==='USERNAME_EXISTS')return 'Ese nombre de usuario ya existe. Escribe uno diferente.';
+    return error?.message||'No se pudo guardar el usuario central.';
+  }
+
   function userModal(user=null){
     const editing=Boolean(user);
     const selected=user?.permissions || rolePermissions(user?.role || 'Evaluador');
@@ -342,11 +368,12 @@
       <form id="admin-user-form" class="admin-form">
         <input type="hidden" name="id" value="${esc(user?.id || '')}">
         <label>Nombre completo<input name="name" value="${esc(user?.name || '')}" required></label>
-        <label>Usuario<input name="username" value="${esc(user?.username || '')}" pattern="[a-zA-Z0-9._-]{3,30}" ${editing?'readonly':''} required><small>Se usará para iniciar sesión; no puede repetirse.</small></label>
+        <label>Usuario<input name="username" value="${esc(user?.username || '')}" pattern="[a-z0-9._-]{3,30}" autocapitalize="none" spellcheck="false" ${editing?'readonly':''} required><small>Se guardará en minúsculas para iniciar sesión; no puede repetirse.</small></label>
         <label>Rol<select name="role"><option ${user?.role==='Evaluador'?'selected':''}>Evaluador</option><option ${user?.role==='Supervisor'?'selected':''}>Supervisor</option></select></label>
         <label class="admin-switch"><input type="checkbox" name="active" ${user?.active!==false?'checked':''}><span>Usuario activo</span></label>
         <fieldset><legend>Permisos del dispositivo</legend><div class="admin-check-grid" id="admin-permission-grid">${permissionsHtml(selected)}</div></fieldset>
-        <div class="admin-modal-actions"><button type="button" class="secondary" data-close-admin-modal>Cancelar</button><button class="primary">${editing?'Guardar cambios':'Crear y generar acceso'}</button></div>
+        <p class="admin-form-feedback" data-admin-user-feedback role="alert" hidden></p>
+        <div class="admin-modal-actions"><button type="button" class="secondary" data-close-admin-modal>Cancelar</button><button type="submit" class="primary" data-admin-user-submit>${editing?'Guardar cambios':'Crear y generar acceso'}</button></div>
       </form>
     </section></div>`;
   }
@@ -686,7 +713,11 @@
     const form=card.querySelector('#login-form');
     const allowed=(adminConfig?.users || []).find(user=>user.id===binding?.targetId) || activeUsers().find(user=>user.role==='Evaluador') || activeUsers()[0];
     if(form&&allowed){form.name.value=allowed.username||allowed.name;form.pin.value='';}
-    card.insertAdjacentHTML('beforeend',`<div class="config-login-import"><b>${binding?`Dispositivo configurado para ${esc(binding.targetName)}`:'Configurar este dispositivo'}</b><p>${binding?'Ingresa con tu Usuario + PIN.':'Escanea el QR o escribe el código entregado por el Administrador.'}</p><button class="secondary" type="button" data-open-activation>Activar este dispositivo</button></div>`);
+    if(binding){
+      card.insertAdjacentHTML('beforeend',`<div class="config-login-import configured-device-note" data-configured-device><b>Dispositivo configurado para ${esc(binding.targetName)}</b></div>`);
+      return;
+    }
+    card.insertAdjacentHTML('beforeend','<div class="config-login-import"><b>Configurar este dispositivo</b><p>Escanea el QR o escribe el código entregado por el Administrador.</p><button class="secondary" type="button" data-open-activation>Activar este dispositivo</button></div>');
   };
 
   const previousSidebar=sidebar;
@@ -808,22 +839,29 @@
 
     if(event.target.id==='admin-user-form'){
       event.preventDefault();event.stopImmediatePropagation();
-      const data=new FormData(event.target),id=safe(data.get('id')),role=safe(data.get('role')),name=safe(data.get('name')),username=safe(data.get('username')).toLowerCase();
-      if(!name) return showToast('Ingresa el nombre completo.');
-      if(!/^[a-z0-9._-]{3,30}$/.test(username))return showToast('El usuario debe tener entre 3 y 30 caracteres válidos.');
+      const form=event.target;
+      if(form.dataset.submitting==='true')return;
+      adminUserFeedback(form);
+      const data=new FormData(form),id=safe(data.get('id')),role=safe(data.get('role')),name=safe(data.get('name')),username=safe(data.get('username')).toLowerCase();
+      const fail=message=>{adminUserFeedback(form,message);showToast(message);};
+      if(!name)return fail('Ingresa el nombre completo.');
+      if(!/^[a-z0-9._-]{3,30}$/.test(username))return fail('El usuario debe tener entre 3 y 30 caracteres válidos.');
       let user=id?adminConfig.users.find(item=>item.id===id):null;
       const creating=!user;
-      let central;
-      try{central=creating?await window.FenologiaAccess.createUser({name,username,role}):await window.FenologiaAccess.updateUser({id,name,username,role});}
-      catch(error){return showToast(error.message||'No se pudo guardar el usuario central.');}
-      if(creating){const created=central.user;user={id:created.id,username:created.username,name:created.name,role:created.role,active:true,pinHash:'',permissions:rolePermissions(created.role),createdAt:now(),updatedAt:now()};adminConfig.users.push(user);}
-      user.name=name;user.username=username;user.role=role;user.active=data.get('active')==='on';user.permissions=data.getAll('permissions');
-      if(!user.permissions.length) user.permissions=rolePermissions(role);
-      user.updatedAt=now();
-      await persistConfig(creating?'Usuario creado':'Usuario actualizado',{usuario:user.name,rol:user.role,estado:user.active?'activo':'inactivo'});
-      closeModal();adminUsersView();
-      if(creating&&central.activation)window.FenologiaAccess.showActivation(central.activation,'Nuevo acceso: compártelo con el usuario');
-      showToast(creating?'Usuario creado; comparte su QR o código.':'Usuario actualizado.');return;
+      adminUserBusy(form,true,creating);
+      adminUserFeedback(form,creating?'Comprobando el acceso central y creando el usuario…':'Guardando los cambios…','progress');
+      try{
+        const central=creating?await window.FenologiaAccess.createUser({name,username,role}):await window.FenologiaAccess.updateUser({id,name,username,role});
+        if(creating){const created=central.user;user={id:created.id,username:created.username,name:created.name,role:created.role,active:true,pinHash:'',permissions:rolePermissions(created.role),createdAt:now(),updatedAt:now()};adminConfig.users.push(user);}
+        user.name=name;user.username=username;user.role=role;user.active=data.get('active')==='on';user.permissions=data.getAll('permissions');
+        if(!user.permissions.length)user.permissions=rolePermissions(role);
+        user.updatedAt=now();
+        await persistConfig(creating?'Usuario creado':'Usuario actualizado',{usuario:user.name,rol:user.role,estado:user.active?'activo':'inactivo'});
+        closeModal();adminUsersView();
+        if(creating&&central.activation)window.FenologiaAccess.showActivation(central.activation,'Nuevo acceso: compártelo con el usuario');
+        showToast(creating?'Usuario creado; comparte su QR o código.':'Usuario actualizado.');
+      }catch(error){adminUserBusy(form,false,creating);fail(adminUserErrorMessage(error));}
+      return;
     }
 
     if(event.target.id==='admin-lot-form'){
@@ -1000,6 +1038,14 @@
       const role=event.target.value,grid=document.querySelector('#admin-permission-grid');
       if(grid)grid.innerHTML=permissionsHtml(rolePermissions(role));
     }
+  });
+
+  document.addEventListener('input',event=>{
+    if(!event.target.matches('#admin-user-form [name="username"]')||event.target.readOnly)return;
+    const position=event.target.selectionStart;
+    event.target.value=safe(event.target.value).toLowerCase().replace(/[^a-z0-9._-]/g,'');
+    if(Number.isInteger(position))event.target.setSelectionRange(position,position);
+    adminUserFeedback(event.target.form);
   });
 
   async function installActivatedUser(profile,pin,endpoint){

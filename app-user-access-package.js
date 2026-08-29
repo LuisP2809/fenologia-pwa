@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.18.0';
+  const VERSION='0.18.1';
   const DEFAULT_ENDPOINT='https://script.google.com/macros/s/AKfycby4c2t4QzQsUy9_OdHA7MF8hmVknbbzDwrVvSiL0yj5KNkK4eZ02CtzfWjWqlWm5tSd/exec';
   let activationScreen=false;
 
@@ -21,11 +21,16 @@
 
   async function post(endpoint,body){
     if(!navigator.onLine)throw new AccessError('OFFLINE','Necesitas internet para completar esta operación.');
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),45000);
     let response;
-    try{response=await fetch(validateEndpoint(endpoint),{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),cache:'no-store'});}
-    catch(error){throw new AccessError('NETWORK_ERROR','No se pudo contactar al servidor central.');}
+    try{response=await fetch(validateEndpoint(endpoint),{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),cache:'no-store',signal:controller.signal});}
+    catch(error){throw new AccessError(error?.name==='AbortError'?'REQUEST_TIMEOUT':'NETWORK_ERROR',error?.name==='AbortError'?'Apps Script tardó demasiado en responder. Intenta nuevamente.':'No se pudo contactar al servidor central.');}
+    finally{clearTimeout(timeout);}
     if(!response.ok)throw new AccessError(`HTTP_${response.status}`,`El servidor respondió HTTP ${response.status}.`);
-    const result=await response.json();
+    let result;
+    try{result=await response.json();}
+    catch{throw new AccessError('INVALID_RESPONSE','Apps Script no devolvió una respuesta válida. Actualiza la implementación e intenta nuevamente.');}
     if(!result?.ok)throw new AccessError(result?.errorCode,result?.message||result?.error||'La solicitud fue rechazada.');
     return result;
   }
@@ -101,6 +106,7 @@
     if(state.session||activationScreen)return;
     const card=document.querySelector('.login-card');if(!card)return;
     const setupEndpoint=card.querySelector('#first-admin-form [name="endpoint"]');if(setupEndpoint&&!safe(setupEndpoint.value))setupEndpoint.value=DEFAULT_ENDPOINT;
+    if(card.querySelector('[data-configured-device]'))return;
     if(card.querySelector('[data-open-activation]'))return;
     card.insertAdjacentHTML('beforeend','<div class="config-login-import"><b>¿Recibiste un acceso?</b><p>Escanea el QR o escribe el código temporal.</p><button class="secondary" type="button" data-open-activation>Activar este dispositivo</button></div>');
   }

@@ -1,6 +1,6 @@
 # Fenología — PWA y APK
 
-## PWA 0.18.0
+## PWA 0.18.1
 
 Antes de publicar:
 
@@ -12,7 +12,7 @@ npm run build:web
 
 Sirve `www/` mediante HTTPS y comprueba instalación, primera carga, reinicio sin conexión, persistencia, cola pendiente y confirmación central. La prueba automatizada incluye 2,400 evaluaciones semanales y reenvíos idempotentes. GitHub Pages publica únicamente desde `main`, ramas `release/**` o una ejecución manual autorizada.
 
-0.18.0 reinicia únicamente el acceso: retira usuarios, sesiones y tokens locales anteriores, pero conserva evaluaciones e IndexedDB. Los perfiles JSON anteriores dejan de ser compatibles porque fueron reemplazados por activación QR/código.
+0.18.1 mejora la interfaz de acceso y la creación central de usuarios. El reinicio único de accesos realizado por 0.18.0 se conserva y no vuelve a borrar configuraciones ni evaluaciones.
 
 En 0.17.0 el mapa y los gráficos del Supervisor/Administrador consultan la semana confirmada en línea al abrirse y durante la actualización periódica. Los Excel históricos cargados se combinan por UUID, sin reemplazar la base local. El Administrador publica automáticamente una configuración operativa sin credenciales para mantener catálogos, variedades, asignaciones, campañas, roles y estados de usuario al día.
 

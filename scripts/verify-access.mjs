@@ -2,6 +2,9 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
 const assert=(condition,message)=>{if(!condition)throw new Error(message);};
+const [userAccessSource,adminSource,adminCss]=await Promise.all([
+  readFile('app-user-access-package.js','utf8'),readFile('app-admin-complete.js','utf8'),readFile('css-admin-complete.css','utf8')
+]);
 const requests=[];
 const host={innerHTML:''};
 const document={
@@ -15,7 +18,7 @@ const context={
   navigator:{onLine:true,clipboard:{writeText:async()=>{}},share:null},
   state:{session:{id:'ADM-001',role:'Administrador'}},app:{innerHTML:''},icons:{leaf:'🌿',check:'✓'},
   esc:value=>String(value??'').replace(/[&<>"']/g,''),showToast(){},render(){},history:{replaceState(){}},
-  URL,JSON,Date,Intl,String,Error,Promise,Math,Array,Object,RegExp,
+  URL,JSON,Date,Intl,String,Error,Promise,Math,Array,Object,RegExp,AbortController,
   MutationObserver:class MutationObserver{observe(){}},
   FormData:class FormData{},setTimeout(){return 1;},clearTimeout(){},addEventListener(){},
   fetch:async(endpoint,options)=>{
@@ -30,7 +33,7 @@ context.FenologiaSync={getConfig:()=>({endpoint:'https://script.google.com/macro
 context.FenologiaAdmin={config:()=>({users:[{id:'ADM-001'}]})};
 vm.createContext(context);
 vm.runInContext(await readFile('vendor/qrcode.js','utf8'),context,{filename:'vendor/qrcode.js'});
-vm.runInContext(await readFile('app-user-access-package.js','utf8'),context,{filename:'app-user-access-package.js'});
+vm.runInContext(userAccessSource,context,{filename:'app-user-access-package.js'});
 
 const created=await context.FenologiaAccess.createUser({name:'Eva Uno',username:'eva.001',role:'Evaluador'});
 assert(created.activation.code==='ABCD-2345','La creación central no devolvió el acceso temporal.');
@@ -48,5 +51,9 @@ assert(requests.at(-1).body.action==='bootstrap-admin'&&!('deviceToken' in reque
 let disabled=false;
 try{await context.FenologiaAccess.verifyCentralUser();}catch(error){disabled=error.code==='USER_DISABLED';}
 assert(disabled,'El cliente no distingue una desactivación central.');
+assert(adminSource.includes('data-configured-device')&&adminSource.includes('Dispositivo configurado para ${esc(binding.targetName)}'),'El ingreso de un equipo configurado todavía muestra una activación innecesaria.');
+assert(userAccessSource.includes("card.querySelector('[data-configured-device]')"),'El módulo de activación vuelve a insertar el botón en un dispositivo configurado.');
+assert(adminSource.includes('Creando usuario…')&&adminSource.includes("form.dataset.submitting==='true'"),'La creación de usuarios no informa progreso o permite dobles envíos.');
+assert(adminSource.includes('data-admin-user-feedback')&&adminCss.includes('.admin-form-feedback'),'Los errores de creación no permanecen visibles dentro del formulario.');
 
-console.log('Accesos validados: Administrador único, API autenticada, QR local, enlace y desactivación central.');
+console.log('Accesos validados: dispositivo asignado, creación protegida, API autenticada, QR local y desactivación central.');

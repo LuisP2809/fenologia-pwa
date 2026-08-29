@@ -56,7 +56,7 @@ vm.runInContext(await readFile('app-platform.js','utf8'),context,{filename:'app-
 await new Promise(resolve=>setImmediate(resolve));
 await new Promise(resolve=>setImmediate(resolve));
 
-assert(hasVersion&&inserted.some(item=>item.html.includes('Versión 0.18.0')),'La versión no apareció en la bienvenida.');
+assert(hasVersion&&inserted.some(item=>item.html.includes('Versión 0.18.1')),'La versión no apareció en la bienvenida.');
 assert(hasUpdateBanner,'La actualización pendiente no apareció sin iniciar sesión.');
 assert(waitingMessages.some(message=>message?.type==='SKIP_WAITING'),'La actualización pendiente no se activó automáticamente en la bienvenida.');
 assert(state.session===null,'La actualización simulada creó o alteró una sesión.');

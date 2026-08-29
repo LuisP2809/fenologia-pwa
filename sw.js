@@ -1,5 +1,5 @@
-const CACHE='fenologia-v0.18.0-qr-access';
-const VERSION='0.18.0';
+const CACHE='fenologia-v0.18.1-access-ui';
+const VERSION='0.18.1';
 const versioned=path=>`${path}?v=${VERSION}`;
 const ASSETS=[
   './','./index.html',versioned('./manifest.webmanifest'),

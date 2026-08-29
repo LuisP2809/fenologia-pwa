@@ -4,7 +4,7 @@ body{margin:0;background:#f5f8f5}
 button,input,select{font:inherit}
 button{cursor:pointer}
 .fatal{padding:42px}
-.toast{position:fixed;right:24px;bottom:24px;z-index:99;background:#173d2b;color:white;padding:14px 18px;border-radius:12px;box-shadow:var(--shadow);opacity:0;transform:translateY(12px);transition:.2s;pointer-events:none}
+.toast{position:fixed;right:24px;bottom:24px;z-index:3000;background:#173d2b;color:white;padding:14px 18px;border-radius:12px;box-shadow:var(--shadow);opacity:0;transform:translateY(12px);transition:.2s;pointer-events:none}
 .toast.show{opacity:1;transform:none}
 .login-page{min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr;background:linear-gradient(125deg,#edf8ef 0 52%,#fff 52%)}
 .login-hero{padding:9vh 8vw;display:flex;flex-direction:column;justify-content:center;max-width:760px}

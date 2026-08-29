@@ -1,6 +1,6 @@
 # Modelo de seguridad local y central
 
-Fenología 0.18.0 continúa siendo *offline-first*: primero confirma el guardado en el dispositivo y después sincroniza. Apps Script administra identidades, activaciones y revocaciones centrales.
+Fenología 0.18.1 continúa siendo *offline-first*: primero confirma el guardado en el dispositivo y después sincroniza. Apps Script administra identidades, activaciones y revocaciones centrales.
 
 ## Controles implementados
 
