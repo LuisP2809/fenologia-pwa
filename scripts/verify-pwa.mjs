@@ -19,8 +19,8 @@ for (const icon of manifest.icons) {
 
 if (!index.includes('rel="manifest"')) throw new Error('index.html no enlaza el manifiesto.');
 if (!index.includes('css-platform.css')) throw new Error('index.html no carga los estilos de plataforma.');
-if (!index.includes('app-updater.js')) throw new Error('index.html no carga el puente de actualización anterior al bootstrap.');
-if (!worker.includes('app-updater.js')) throw new Error('El service worker no conserva el puente de actualización.');
+if (!index.includes('app-updater-0.19.0.js')) throw new Error('index.html no carga el puente de recuperación de caché anterior al bootstrap.');
+if (!worker.includes('app-updater-0.19.0.js')) throw new Error('El service worker no conserva el puente de recuperación de caché.');
 
 // La implementación puede usar optional chaining u otras variantes de sintaxis.
 // Lo importante es que escuche la señal SKIP_WAITING y ejecute skipWaiting().

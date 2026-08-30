@@ -6,7 +6,7 @@ const read=file=>readFile(path.join(root,file),'utf8');
 const assert=(condition,message)=>{if(!condition)throw new Error(message);};
 
 const [packageText,index,updater,bootstrap,worker,evaluation,evaluationFlow,xlsx,supervisor,fileAnalysis,sourceGuard,database,security,admin,syncCore,sync,appsScript,platform,userAccess,map]=await Promise.all([
-  read('package.json'),read('index.html'),read('app-updater.js'),read('app-bootstrap.js'),read('sw.js'),read('app-eval.js'),
+  read('package.json'),read('index.html'),read('app-updater-0.19.0.js'),read('app-bootstrap.js'),read('sw.js'),read('app-eval.js'),
   read('app-evaluation-flow.js'),read('app-xlsx-workflow.js'),read('app-supervisor.js'),
   read('app-supervisor-file-analysis.js'),read('app-analysis-source-guard.js'),read('app-db.js'),
   read('app-security.js'),read('app-admin-complete.js'),read('app-sync-core.js'),read('app-sync.js'),read('apps-script/Code.gs'),read('app-platform.js'),read('app-user-access-package.js'),read('app-map.js')
@@ -33,7 +33,9 @@ assert(security.includes('restore-internal-backup'),'Falta la recuperación de l
 for(const source of [index,bootstrap,worker])assert(source.includes(version),`La versión ${version} no está sincronizada en un archivo de publicación.`);
 assert(index.includes('Content-Security-Policy'),'Falta la política de seguridad de contenido.');
 assert(!index.includes('onclick='),'index.html contiene manejadores en línea incompatibles con CSP.');
-assert(index.includes('app-updater.js')&&updater.includes('activatePendingWorker'),'Falta el puente externo para activar la actualización antes del bootstrap.');
+assert(index.includes('app-updater-0.19.0.js')&&updater.includes('activatePendingWorker'),'Falta el puente externo de recuperación para activar la actualización antes del bootstrap.');
+assert(updater.includes("updateViaCache:'none'")&&updater.includes("./sw.js?recovery=0.19.0-cache-1"),'El puente de recuperación no fuerza la descarga del service worker nuevo.');
+assert(!worker.includes('ignoreSearch:true'),'El service worker todavía permite que una versión anterior suplante archivos nuevos.');
 assert(updater.includes("waiting.postMessage({type:'SKIP_WAITING'})")&&updater.includes('location.reload()'),'El puente no activa y recarga la nueva caché.');
 assert(updater.includes("RESET_MARKER='fenologia-access-start-v2'")&&!updater.includes('deleteDatabase('),'El reinicio de accesos puede borrar evaluaciones locales.');
 assert(updater.includes('LOCAL_KEYS.has(key)')&&!updater.includes("key.startsWith('fenologia-')"),'El reinicio no limita el borrado a credenciales conocidas.');

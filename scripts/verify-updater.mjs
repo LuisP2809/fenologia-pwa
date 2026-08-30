@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source=await readFile('app-updater.js','utf8');
+const source=await readFile('app-updater-0.19.0.js','utf8');
 const assert=(condition,message)=>{if(!condition)throw new Error(message);};
 
 function storage(values={}){
@@ -58,7 +58,7 @@ async function runScenario({controlled,waiting,alreadyReset=false}){
   };
   const context={window,document,location,localStorage,sessionStorage,navigator:{serviceWorker},console};
   vm.createContext(context);
-  vm.runInContext(source,context,{filename:'app-updater.js'});
+  vm.runInContext(source,context,{filename:'app-updater-0.19.0.js'});
   await new Promise(resolve=>setImmediate(resolve));
   await new Promise(resolve=>setImmediate(resolve));
   return {loaded,messages,reloads,html:app.innerHTML,deletedDatabases,local:localStorage.snapshot(),session:sessionStorage.snapshot()};

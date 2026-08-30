@@ -1,4 +1,4 @@
-const CACHE='fenologia-v0.19.0-central-users';
+const CACHE='fenologia-v0.19.0-cache-recovery-1';
 const VERSION='0.19.0';
 const versioned=path=>`${path}?v=${VERSION}`;
 const ASSETS=[
@@ -6,7 +6,7 @@ const ASSETS=[
   versioned('./icons/icon-192.png'),versioned('./icons/icon-512.png'),versioned('./icons/icon-maskable.png'),
   versioned('./icons/icon-192.svg'),versioned('./icons/icon-512.svg'),versioned('./icons/icon-maskable.svg'),
   './data/catalogos.json',versioned('./data/lotes-mapa.geojson'),
-  versioned('./app-updater.js'),versioned('./app-db.js'),versioned('./app-bootstrap.js'),versioned('./app-core.js'),versioned('./app-eval.js'),versioned('./vendor/qrcode.js'),
+  './app-updater-0.19.0.js',versioned('./app-db.js'),versioned('./app-bootstrap.js'),versioned('./app-core.js'),versioned('./app-eval.js'),versioned('./vendor/qrcode.js'),
   versioned('./app-admin.js'),versioned('./app-credentials.js'),versioned('./app-package-security.js'),versioned('./app-security.js'),versioned('./app-workflow-patches.js'),versioned('./app-export-filters.js'),
   versioned('./app-db-ui.js'),versioned('./app-supervisor.js'),versioned('./app-supervisor-role.js'),versioned('./app-supervisor-unified.js'),
   versioned('./app-map.js'),versioned('./app-charts.js'),versioned('./app-admin-complete.js'),versioned('./app-admin-dni-fix.js'),
@@ -35,7 +35,7 @@ function fetchWithTimeout(request,timeout=4000){
 }
 async function cacheFirst(request){
   const cache=await caches.open(CACHE);
-  const cached=await cache.match(request,{ignoreSearch:true});
+  const cached=await cache.match(request);
   const refresh=fetchWithTimeout(request).then(response=>{if(response.ok)cache.put(request,response.clone());return response;}).catch(()=>null);
   if(cached){refresh.catch(()=>{});return cached;}
   return await refresh;
@@ -55,10 +55,10 @@ self.addEventListener('fetch',event=>{
       if(response?.ok){const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy)).catch(()=>{});}
       return response;
     }catch{
-      const cached=await caches.match(event.request,{ignoreSearch:true});
+      const cached=await caches.match(event.request);
       if(cached)return cached;
       if(event.request.mode==='navigate'){
-        const page=await caches.match('./index.html',{ignoreSearch:true});
+        const page=await caches.match('./index.html');
         if(page)return page;
       }
       return new Response('Recurso no disponible sin conexión.',{status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}});
