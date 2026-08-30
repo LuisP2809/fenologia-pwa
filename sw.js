@@ -1,4 +1,4 @@
-const CACHE='fenologia-v0.19.0-cache-recovery-1';
+const CACHE='fenologia-v0.19.0-login-redesign-1';
 const VERSION='0.19.0';
 const versioned=path=>`${path}?v=${VERSION}`;
 const ASSETS=[
@@ -6,6 +6,7 @@ const ASSETS=[
   versioned('./icons/icon-192.png'),versioned('./icons/icon-512.png'),versioned('./icons/icon-maskable.png'),
   versioned('./icons/icon-192.svg'),versioned('./icons/icon-512.svg'),versioned('./icons/icon-maskable.svg'),
   './data/catalogos.json',versioned('./data/lotes-mapa.geojson'),
+  './assets/login-farm.svg?v=0.19.0-login-1',
   './app-updater-0.19.0.js',versioned('./app-db.js'),versioned('./app-bootstrap.js'),versioned('./app-core.js'),versioned('./app-eval.js'),versioned('./vendor/qrcode.js'),
   versioned('./app-admin.js'),versioned('./app-credentials.js'),versioned('./app-package-security.js'),versioned('./app-security.js'),versioned('./app-workflow-patches.js'),versioned('./app-export-filters.js'),
   versioned('./app-db-ui.js'),versioned('./app-supervisor.js'),versioned('./app-supervisor-role.js'),versioned('./app-supervisor-unified.js'),

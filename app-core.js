@@ -75,19 +75,24 @@ function isEvaluator(){ return state.session?.role==='Evaluador'; }
 
 function loginView(){
   app.innerHTML = `<main class="login-page">
-    <section class="login-hero">
-      <div class="brand-mark">${icons.leaf}</div>
-      <span class="eyebrow">SISTEMA DE EVALUACIÓN AGRÍCOLA</span>
-      <h1>Fenología</h1>
-      <p>Registra evaluaciones en campo, incluso sin conexión, y consolida el avance de tus lotes.</p>
-      <div class="hero-points"><span>${icons.check} Trabajo offline</span><span>${icons.check} Datos por rol</span><span>${icons.check} Exportación Excel</span></div>
+    <section class="login-hero" aria-label="Ingleby Farms">
+      <div class="ingleby-wordmark" role="img" aria-label="Ingleby Farms">
+        <span>INGLEBY</span>
+        <svg aria-hidden="true" viewBox="0 0 58 76" focusable="false">
+          <path d="M29 70C28 52 29 35 33 17" />
+          <path d="M34 21C39 10 48 7 54 8C53 18 46 24 34 25" />
+          <path d="M31 35C23 24 14 22 7 24C10 35 18 40 31 39" />
+          <path d="M22 70C27 67 32 67 38 70" />
+        </svg>
+        <span>FARMS.</span>
+      </div>
     </section>
     <section class="login-card">
-      <div><span class="eyebrow green">ACCESO SEGURO</span><h2>Bienvenido</h2><p>Ingresa con tu usuario y PIN.</p></div>
+      <div class="login-card-heading"><span class="eyebrow green">ACCESO SEGURO</span><h2>Bienvenido</h2><p>Ingresa con tu usuario y PIN.</p></div>
       <form id="login-form">
-        <label>Usuario<input name="name" autocomplete="username" required></label>
-        <label>PIN<input name="pin" type="password" inputmode="numeric" minlength="6" maxlength="12" autocomplete="current-password" required></label>
-        <button class="primary wide">Ingresar al sistema <span>→</span></button>
+        <label class="login-field"><span>Usuario</span><div class="login-input-shell"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c.5-4 2.7-6 6.5-6s6 2 6.5 6"/></svg><input name="name" autocomplete="username" required></div></label>
+        <label class="login-field"><span>PIN</span><div class="login-input-shell"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input name="pin" type="password" inputmode="numeric" minlength="6" maxlength="12" autocomplete="current-password" required><button type="button" class="login-pin-toggle" data-toggle-login-pin aria-label="Mostrar PIN"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></div></label>
+        <button class="primary wide login-submit"><span class="login-submit-label">${icons.seed} Ingresar al sistema</span><span>→</span></button>
       </form>
       ${developmentMode?'<div class="demo-note"><b>Entorno local de desarrollo</b><span>Las cuentas locales no se incluyen en producción.</span></div>':''}
     </section>

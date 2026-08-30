@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const root = process.cwd();
 const output = path.join(root, 'www');
-const folders = ['data', 'icons', 'vendor'];
+const folders = ['data', 'icons', 'vendor', 'assets'];
 
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });

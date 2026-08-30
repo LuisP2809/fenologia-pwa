@@ -48,7 +48,7 @@
     if(!card) return;
     if(!card.querySelector('.platform-login-version')){
       const form=card.querySelector('#login-form, #first-admin-form');
-      form?.insertAdjacentHTML('beforebegin',`<div class="platform-login-version"><span>Versión ${PLATFORM_VERSION}</span><small>Interfaz y accesos actualizados</small></div>`);
+      form?.insertAdjacentHTML('beforebegin',`<div class="platform-login-version"><i aria-hidden="true">✓</i><span>Versión ${PLATFORM_VERSION}</span><small>Interfaz y accesos actualizados</small></div>`);
     }
     if(!card.querySelector('.platform-login-card')){
       const installed=isStandalone();
@@ -290,6 +290,16 @@
   });
 
   document.addEventListener('click',event=>{
+    const pinToggle=event.target.closest('[data-toggle-login-pin]');
+    if(pinToggle){
+      const input=pinToggle.closest('.login-input-shell')?.querySelector('input[name="pin"]');
+      if(!input)return;
+      const reveal=input.type==='password';
+      input.type=reveal?'text':'password';
+      pinToggle.setAttribute('aria-label',reveal?'Ocultar PIN':'Mostrar PIN');
+      pinToggle.classList.toggle('active',reveal);
+      return;
+    }
     if(event.target.closest('#platform-install')){beginInstall();return;}
     if(event.target.closest('#platform-update')){applyUpdate();}
   });
