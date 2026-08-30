@@ -1,5 +1,5 @@
 (() => {
-  const PLATFORM_VERSION = '0.19.0';
+  const PLATFORM_VERSION = '0.20.0';
   let installPrompt = null;
   let serviceWorkerRegistration = null;
   let updateAvailable = false;

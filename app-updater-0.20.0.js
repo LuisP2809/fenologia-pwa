@@ -1,6 +1,6 @@
 (() => {
-  const VERSION='0.19.0';
-  const ASSET_BUILD='0.19.0-login-2';
+  const VERSION='0.20.0';
+  const ASSET_BUILD='0.20.0-multidevice-1';
   const RESET_MARKER='fenologia-access-start-v2';
   const LOCAL_KEYS=new Set([
     'admin-config-v1','admin-config-v2','admin-map-v1','admin-config-history-v1','device-config-v1','device-config-v2',
@@ -81,7 +81,7 @@
     await resetApplicationData();
     if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
       try{
-        const registration=await navigator.serviceWorker.register('./sw.js?recovery=0.19.0-login-2',{scope:'./',updateViaCache:'none'});
+        const registration=await navigator.serviceWorker.register('./sw.js?recovery=0.20.0-multidevice-1',{scope:'./',updateViaCache:'none'});
         if(await activatePendingWorker(registration))return;
       }catch(error){console.warn('No se pudo comprobar la actualización antes del inicio:',error);}
     }

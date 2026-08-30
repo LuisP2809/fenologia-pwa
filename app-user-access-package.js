@@ -1,7 +1,9 @@
 (() => {
-  const VERSION='0.19.0';
+  const VERSION='0.20.0';
   const DEFAULT_ENDPOINT='https://script.google.com/macros/s/AKfycby4c2t4QzQsUy9_OdHA7MF8hmVknbbzDwrVvSiL0yj5KNkK4eZ02CtzfWjWqlWm5tSd/exec';
   let activationScreen=false;
+  let centralSystemStatus=null;
+  let centralStatusPromise=null;
 
   const safe=value=>String(value??'').trim();
   const formatExpiry=value=>{try{return new Intl.DateTimeFormat('es-PE',{dateStyle:'short',timeStyle:'short'}).format(new Date(value));}catch{return safe(value);}};
@@ -12,6 +14,8 @@
   }
 
   function endpointFromConfig(){return safe(window.FenologiaSync?.getConfig?.().endpoint)||DEFAULT_ENDPOINT;}
+  function currentDeviceId(){return safe(window.FenologiaSync?.state?.deviceId);}
+  function currentDeviceLabel(){return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent||'')?'Celular':'PC';}
   function validateEndpoint(value){
     const endpoint=safe(value);let url;
     try{url=new URL(endpoint);}catch{throw new AccessError('INVALID_ENDPOINT','La URL del servidor no es válida.');}
@@ -39,17 +43,25 @@
     const config=window.FenologiaSync?.getConfig?.()||{};
     const evaluatorId=safe(state.session?.id)||safe(window.FenologiaAdmin?.config?.()?.users?.[0]?.id);
     if(!evaluatorId||!safe(config.deviceToken))throw new AccessError('NO_PROFILE','Este dispositivo no tiene una credencial central activa.');
-    return {endpoint:config.endpoint,body:{action,evaluatorId,deviceToken:config.deviceToken,...payload}};
+    return {endpoint:config.endpoint,body:{action,evaluatorId,deviceId:currentDeviceId(),deviceToken:config.deviceToken,...payload}};
   }
 
   function adminRequest(action,payload={}){const request=authEnvelope(action,payload);return post(request.endpoint,request.body);}
-  function bootstrapAdmin(values){return post(values.endpoint,{action:'bootstrap-admin',setupCode:values.setupCode,name:values.name,username:values.username});}
+  function systemStatus(endpoint=endpointFromConfig()){return post(endpoint,{action:'system-status'});}
+  function refreshSystemStatus(endpoint=endpointFromConfig()){
+    if(centralStatusPromise)return centralStatusPromise;
+    centralStatusPromise=systemStatus(endpoint).then(result=>{centralSystemStatus=result;window.dispatchEvent(new CustomEvent('fenologia-system-status',{detail:result}));return result;}).catch(()=>null).finally(()=>{centralStatusPromise=null;});
+    return centralStatusPromise;
+  }
+  function bootstrapAdmin(values){return post(values.endpoint,{action:'bootstrap-admin',setupCode:values.setupCode,name:values.name,username:values.username,deviceId:currentDeviceId(),deviceLabel:'PC principal'});}
   function listUsers(){return adminRequest('list-users');}
+  function listDevices(){return adminRequest('list-devices');}
+  function setDeviceActive(targetDeviceId,active){return adminRequest('set-device-active',{targetDeviceId,active});}
   function createUser(user){return adminRequest('create-user',{user});}
   function updateUser(user){return adminRequest('update-user',{user});}
   function setUserActive(targetUserId,active){return adminRequest('set-user-active',{targetUserId,active});}
   function createActivation(targetUserId){return adminRequest('create-activation',{targetUserId});}
-  function redeemActivation(endpoint,activationCode){return post(endpoint,{action:'redeem-activation',activationCode});}
+  function redeemActivation(endpoint,activationCode){return post(endpoint,{action:'redeem-activation',activationCode,deviceId:currentDeviceId(),deviceLabel:currentDeviceLabel()});}
   function verifyCentralUser(){return adminRequest('ping');}
 
   function activationParams(value=location.href){
@@ -136,6 +148,13 @@
   function decorateLogin(){
     if(state.session||activationScreen)return;
     const card=document.querySelector('.login-card');if(!card)return;
+    const firstAdminForm=card.querySelector('#first-admin-form');
+    if(firstAdminForm&&centralSystemStatus?.adminExists){
+      card.innerHTML=`<div class="login-card-heading" data-central-system-ready><span class="eyebrow green">ACCESO EXISTENTE</span><h2>Sistema configurado</h2><p>El Administrador principal ya existe. Activa este equipo con el QR o código generado desde su dispositivo actual.</p></div>
+        <div class="first-admin-role"><span>Cuenta central</span><b>ADM-001 · Administrador principal</b></div>
+        <div class="config-login-import"><b>Agregar este dispositivo</b><p>Después de activarlo podrás usar PC y celular al mismo tiempo, cada uno con su propio PIN local.</p><button class="primary wide" type="button" data-open-activation>Activar este dispositivo <span>→</span></button></div>`;
+      return;
+    }
     const setupEndpoint=card.querySelector('#first-admin-form [name="endpoint"]');if(setupEndpoint&&!safe(setupEndpoint.value))setupEndpoint.value=DEFAULT_ENDPOINT;
     if(card.querySelector('[data-configured-device]'))return;
     if(card.querySelector('[data-open-activation]'))return;
@@ -178,9 +197,10 @@
   observer.observe(document.querySelector('#app')||document.body,{childList:true,subtree:true});
 
   window.addEventListener('fenologia-app-ready',()=>{
-    const params=activationParams();if(params.code&&!state.session)renderActivation(params);else decorateLogin();
+    const params=activationParams();if(params.code&&!state.session)renderActivation(params);else refreshSystemStatus().finally(()=>decorateLogin());
   },{once:true});
-  setTimeout(()=>{const params=activationParams();if(params.code&&!state.session)renderActivation(params);else decorateLogin();},0);
+  window.addEventListener('fenologia-system-status',()=>decorateLogin());
+  setTimeout(()=>{const params=activationParams();if(params.code&&!state.session)renderActivation(params);else refreshSystemStatus().finally(()=>decorateLogin());},0);
 
-  window.FenologiaAccess={version:VERSION,defaultEndpoint:()=>DEFAULT_ENDPOINT,bootstrapAdmin,listUsers,createUser,updateUser,setUserActive,createActivation,redeemActivation,verifyCentralUser,showActivation,activationPanel,bindActivationPanel,renderActivation,activationParams};
+  window.FenologiaAccess={version:VERSION,defaultEndpoint:()=>DEFAULT_ENDPOINT,centralStatus:()=>centralSystemStatus,refreshSystemStatus,bootstrapAdmin,listUsers,listDevices,setDeviceActive,createUser,updateUser,setUserActive,createActivation,redeemActivation,verifyCentralUser,showActivation,activationPanel,bindActivationPanel,renderActivation,activationParams};
 })();

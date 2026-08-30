@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.19.0';
+  const VERSION = '0.20.0';
   const SYSTEM_EPOCH = 'fresh-start-v2';
   const CONFIG_KEY = 'admin-config-v2';
   const MAP_KEY = 'admin-map-v1';
@@ -44,6 +44,9 @@
   let initialized = false;
   let initPromise = null;
   let creatingInitialAdmin = false;
+  let centralDevices = [];
+  let centralDevicesLoaded = false;
+  let centralDevicesLoading = false;
 
   const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
   const now = () => new Date().toISOString();
@@ -334,7 +337,7 @@
     if(error?.code==='NO_PROFILE')return 'Este Administrador no tiene una credencial central activa en este dispositivo.';
     if(error?.code==='NETWORK_ERROR')return 'No se pudo contactar a Apps Script. Revisa la conexión e intenta nuevamente.';
     if(error?.code==='REQUEST_TIMEOUT')return 'Apps Script tardó demasiado en responder. Verifica la conexión e intenta nuevamente.';
-    if(error?.code==='INVALID_RESPONSE')return 'Apps Script respondió con un formato inesperado. Comprueba que la implementación 0.19.0 siga activa.';
+    if(error?.code==='INVALID_RESPONSE')return 'Apps Script respondió con un formato inesperado. Comprueba que la implementación 0.20.0 siga activa.';
     if(error?.code==='USERNAME_EXISTS')return 'Ese nombre de usuario ya existe. Escribe uno diferente.';
     return error?.message||'No se pudo completar la operación central.';
   }
@@ -371,7 +374,7 @@
     catch(error){console.error(error);showToast('El usuario quedó guardado en el servidor, pero la lista local no terminó de actualizarse. Pulsa Actualizar usuarios.');return false;}
   }
 
-  function bindCentralUsersView(){
+  function bindCentralUsersView(activation=null,activationTitle=''){
     const form=document.querySelector('#central-user-form');
     form?.addEventListener('submit',async event=>{
       event.preventDefault();event.stopPropagation();
@@ -405,20 +408,42 @@
 
     document.querySelectorAll('[data-new-central-activation]').forEach(button=>button.addEventListener('click',async()=>{
       button.disabled=true;
-      try{const result=await window.FenologiaAccess.createActivation(button.dataset.newCentralActivation);adminUsersView(result.activation,'Acceso temporal renovado');}
+      try{
+        const user=(adminConfig.users||[]).find(item=>item.id===button.dataset.newCentralActivation);
+        const result=await window.FenologiaAccess.createActivation(button.dataset.newCentralActivation);
+        adminUsersView(result.activation,user?.role==='Administrador'?'Agregar dispositivo del Administrador':'Acceso temporal renovado');
+      }
       catch(error){button.disabled=false;showToast(centralUserErrorMessage(error));}
     }));
+    document.querySelectorAll('[data-toggle-central-device]').forEach(button=>button.addEventListener('click',async()=>{
+      const device=centralDevices.find(item=>item.deviceId===button.dataset.toggleCentralDevice);if(!device)return;
+      button.disabled=true;
+      try{const result=await window.FenologiaAccess.setDeviceActive(device.deviceId,!device.active);centralDevices=result.devices||[];adminUsersView();showToast(device.active?'Dispositivo revocado.':'Dispositivo reactivado.');}
+      catch(error){button.disabled=false;showToast(centralUserErrorMessage(error));}
+    }));
+    if(!centralDevicesLoaded&&!centralDevicesLoading&&window.FenologiaAccess?.listDevices){
+      centralDevicesLoading=true;
+      window.FenologiaAccess.listDevices().then(result=>{centralDevices=result.devices||[];centralDevicesLoaded=true;if(state.view==='users')adminUsersView(activation,activationTitle);}).catch(error=>console.warn('No se pudo cargar la lista de dispositivos:',error)).finally(()=>{centralDevicesLoading=false;});
+    }
     window.FenologiaAccess?.bindActivationPanel?.(document);
   }
 
   function adminUsersView(activation=null,activationTitle=''){
     if(!isAdmin()){state.view='home';return homeView();}
+    const currentDeviceId=safe(window.FenologiaSync?.state?.deviceId);
     const rows=(adminConfig?.users || []).map(user=>`<article class="admin-user-card ${user.active?'':'inactive'}">
       <div class="admin-user-avatar">${esc(user.name.split(' ').map(part=>part[0]).slice(0,2).join(''))}</div>
       <div class="admin-user-main"><b>${esc(user.name)}</b><small>@${esc(user.username)} · ${esc(user.id)}</small></div>
       <em class="admin-role">${esc(user.role)}</em>
       <span class="admin-status ${user.active?'active':'inactive'}">${user.active?'Activo':'Inactivo'}</span>
-      <div class="admin-row-actions">${user.role!=='Administrador'?`<button class="primary" data-new-central-activation="${esc(user.id)}" ${user.active?'':'disabled'}>Nuevo acceso</button><button class="${user.active?'danger-soft':'secondary'}" data-toggle-central-user="${esc(user.id)}">${user.active?'Desactivar':'Activar'}</button>`:'<span class="admin-primary-user">Administrador principal</span>'}</div>
+      <div class="admin-row-actions">${user.role!=='Administrador'?`<button class="primary" data-new-central-activation="${esc(user.id)}" ${user.active?'':'disabled'}>Nuevo acceso</button><button class="${user.active?'danger-soft':'secondary'}" data-toggle-central-user="${esc(user.id)}">${user.active?'Desactivar':'Activar'}</button>`:`<button class="primary" data-new-central-activation="${esc(user.id)}" ${user.active?'':'disabled'}>Agregar dispositivo</button><span class="admin-primary-user">Administrador principal</span>`}</div>
+    </article>`).join('');
+    const deviceRows=centralDevices.map(device=>`<article class="admin-user-card ${device.active?'':'inactive'}">
+      <div class="admin-user-avatar">${device.label==='Celular'?'M':'PC'}</div>
+      <div class="admin-user-main"><b>${esc(device.label||'Dispositivo')}</b><small>${esc(device.evaluator||device.evaluatorId)} · ${esc(device.deviceId.slice(0,18))}${device.deviceId.length>18?'…':''}</small></div>
+      <em class="admin-role">${device.deviceId===currentDeviceId?'Este dispositivo':esc(device.role||'')}</em>
+      <span class="admin-status ${device.active?'active':'inactive'}">${device.active?'Activo':'Revocado'}</span>
+      <div class="admin-row-actions"><small>Último uso: ${esc(localDate(device.lastUsedAt||device.createdAt))}</small><button class="${device.active?'danger-soft':'secondary'}" data-toggle-central-device="${esc(device.deviceId)}" ${device.deviceId===currentDeviceId?'disabled':''}>${device.active?'Revocar':'Reactivar'}</button></div>
     </article>`).join('');
     app.innerHTML=shell(`${titleBlock('ADMINISTRADOR','Usuarios y roles','Crea usuarios y entrega su acceso mediante QR, enlace o código temporal.')}
       <section class="central-user-grid">
@@ -434,8 +459,9 @@
         <article class="panel central-user-status"><div class="panel-head"><div><span>ESTADO CENTRAL</span><h2>${activeUsers().length} usuarios activos</h2><p>Los códigos vencen en 24 horas y solo pueden usarse una vez.</p></div></div><button class="secondary" type="button" id="refresh-central-users" ${navigator.onLine?'':'disabled'}>Actualizar usuarios</button></article>
       </section>
       ${window.FenologiaAccess?.activationPanel?.(activation,activationTitle)||''}
-      <section class="panel"><div class="panel-head"><div><span>ACCESOS CENTRALES</span><h2>Usuarios configurados</h2><p>Desactivar bloquea la próxima conexión sin borrar evaluaciones. “Nuevo acceso” invalida el acceso anterior cuando el código sea utilizado.</p></div></div><div class="admin-user-list">${rows || '<div class="empty">Sin usuarios</div>'}</div></section>`);
-    bindCentralUsersView();
+      <section class="panel"><div class="panel-head"><div><span>ACCESOS CENTRALES</span><h2>Usuarios configurados</h2><p>“Nuevo acceso” reemplaza la credencial anterior de Evaluadores y Supervisores. “Agregar dispositivo” mantiene abiertos los equipos del Administrador.</p></div></div><div class="admin-user-list">${rows || '<div class="empty">Sin usuarios</div>'}</div></section>
+      <section class="panel"><div class="panel-head"><div><span>DISPOSITIVOS DEL ADMINISTRADOR</span><h2>PC y celulares autorizados</h2><p>Cada equipo tiene una credencial independiente. Revocar uno no cierra los demás ni elimina evaluaciones.</p></div></div><div class="admin-user-list">${centralDevicesLoading?'<div class="empty">Cargando dispositivos…</div>':deviceRows||'<div class="empty">La PC actual aparecerá después de la primera conexión con el servicio actualizado.</div>'}</div></section>`);
+    bindCentralUsersView(activation,activationTitle);
   }
 
   function catalogFields(){return Object.keys(adminConfig?.catalog?.lotesAgrupados || {}).sort((a,b)=>a.localeCompare(b,'es'));}

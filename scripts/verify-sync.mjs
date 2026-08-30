@@ -15,7 +15,7 @@ vm.createContext(serverContext);
 vm.runInContext(`${serverSource}\n;globalThis.__serverTest={FENOLOGIA_SYNC_VERSION,FENO_HEADERS,BIO_HEADERS,PARAM_HEADERS,weekKey_,businessKey_,canonicalString_,fenologyRow_,biometryRow_,classifyEntry_,validateCentralConfig_,normalizeActivationCode_,formatActivationCode_,normalizeUsername_};`,serverContext,{filename:'apps-script/Code.gs'});
 const server=serverContext.__serverTest;
 
-assert(core.VERSION==='0.19.0'&&server.FENOLOGIA_SYNC_VERSION==='0.19.0','Cliente y servidor no corresponden a 0.19.0.');
+assert(core.VERSION==='0.20.0'&&server.FENOLOGIA_SYNC_VERSION==='0.20.0','Cliente y servidor no corresponden a 0.20.0.');
 assert(core.isoWeekInfo('2021-01-01').key==='2020-S53','La semana ISO falla al cruzar de año.');
 assert(core.isoWeekInfo('2024-12-30').key==='2025-S01','La primera semana ISO del año siguiente es incorrecta.');
 assert(server.FENO_HEADERS.length===44,'La hoja FENOLOGIA no conserva 44 columnas.');
@@ -118,5 +118,7 @@ assert(serverSource.includes('LockService.getScriptLock()'),'El servidor no seri
 assert(serverSource.includes("'PROCESSING'")&&serverSource.includes("'CONFIRMED'"),'El servidor no conserva estados recuperables de escritura.');
 assert(serverSource.includes('ensureRange_(sheet,row,values.length)')&&serverSource.includes('insertRowsAfter'),'El archivo semanal no amplía su cuadrícula antes de superar 1,000 filas.');
 assert(serverSource.includes('CONFIG_CENTRAL')&&serverSource.includes('publishCentralConfigLocked_'),'El servidor no publica la configuración operativa central.');
+assert(serverSource.includes("mode==='MULTI_DEVICE'?issueDeviceProfile_")&&serverSource.includes("if(user.role==='Administrador'&&deviceId)upsertDeviceCredential_"),'La migración multidispositivo puede rotar o perder la credencial actual de la PC.');
+assert(syncSource.includes('deviceId:syncState.deviceId,timestamp,nonce,signature'),'Las consultas firmadas no identifican qué dispositivo del Administrador está operando.');
 
 console.log('Sincronización validada: 2,400 evaluaciones, 480 reenvíos, edición, conflicto, semanas ISO, cuadrante opcional y limpieza confirmada.');

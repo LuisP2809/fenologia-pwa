@@ -1,5 +1,5 @@
 (() => {
-  const VERSION='0.19.0';
+  const VERSION='0.20.0';
   const RESET_MARKER='fenologia-access-start-v2';
   const LOCAL_KEYS=new Set([
     'admin-config-v1','admin-config-v2','admin-map-v1','admin-config-history-v1','device-config-v1','device-config-v2',

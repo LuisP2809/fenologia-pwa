@@ -6,7 +6,7 @@ const read=file=>readFile(path.join(root,file),'utf8');
 const assert=(condition,message)=>{if(!condition)throw new Error(message);};
 
 const [packageText,index,updater,bootstrap,worker,evaluation,evaluationFlow,xlsx,supervisor,fileAnalysis,sourceGuard,database,security,admin,syncCore,sync,appsScript,platform,userAccess,map]=await Promise.all([
-  read('package.json'),read('index.html'),read('app-updater-0.19.0.js'),read('app-bootstrap.js'),read('sw.js'),read('app-eval.js'),
+  read('package.json'),read('index.html'),read('app-updater-0.20.0.js'),read('app-bootstrap.js'),read('sw.js'),read('app-eval.js'),
   read('app-evaluation-flow.js'),read('app-xlsx-workflow.js'),read('app-supervisor.js'),
   read('app-supervisor-file-analysis.js'),read('app-analysis-source-guard.js'),read('app-db.js'),
   read('app-security.js'),read('app-admin-complete.js'),read('app-sync-core.js'),read('app-sync.js'),read('apps-script/Code.gs'),read('app-platform.js'),read('app-user-access-package.js'),read('app-map.js')
@@ -33,9 +33,9 @@ assert(security.includes('restore-internal-backup'),'Falta la recuperación de l
 for(const source of [index,bootstrap,worker])assert(source.includes(version),`La versión ${version} no está sincronizada en un archivo de publicación.`);
 assert(index.includes('Content-Security-Policy'),'Falta la política de seguridad de contenido.');
 assert(!index.includes('onclick='),'index.html contiene manejadores en línea incompatibles con CSP.');
-assert(index.includes('app-updater-0.19.0.js')&&updater.includes('activatePendingWorker'),'Falta el puente externo de recuperación para activar la actualización antes del bootstrap.');
-assert(updater.includes("updateViaCache:'none'")&&updater.includes("./sw.js?recovery=0.19.0-login-2"),'El puente de recuperación no fuerza la descarga del service worker nuevo.');
-assert(index.includes('css-login-0.19.0.css?v=login-2')&&index.includes('app-updater-0.19.0.js?build=login-2'),'La pantalla de acceso no usa recursos con identidad de caché nueva.');
+assert(index.includes('app-updater-0.20.0.js')&&updater.includes('activatePendingWorker'),'Falta el puente externo de recuperación para activar la actualización antes del bootstrap.');
+assert(updater.includes("updateViaCache:'none'")&&updater.includes("./sw.js?recovery=0.20.0-multidevice-1"),'El puente de recuperación no fuerza la descarga del service worker nuevo.');
+assert(index.includes('css-login-0.20.0.css?v=multidevice-1')&&index.includes('app-updater-0.20.0.js?build=multidevice-1'),'La pantalla de acceso no usa recursos con identidad de caché nueva.');
 assert(!worker.includes('ignoreSearch:true'),'El service worker todavía permite que una versión anterior suplante archivos nuevos.');
 assert(updater.includes("waiting.postMessage({type:'SKIP_WAITING'})")&&updater.includes('location.reload()'),'El puente no activa y recarga la nueva caché.');
 assert(updater.includes("RESET_MARKER='fenologia-access-start-v2'")&&!updater.includes('deleteDatabase('),'El reinicio de accesos puede borrar evaluaciones locales.');
@@ -76,8 +76,8 @@ assert(userAccess.includes('FenologiaAdmin.installActivatedUser')&&userAccess.in
 assert(admin.includes("SYSTEM_EPOCH = 'fresh-start-v2'")&&appsScript.includes("systemEpoch:'fresh-start-v2'"),'Los accesos no pertenecen a la nueva etapa del sistema.');
 assert(admin.includes("payload.systemEpoch!==SYSTEM_EPOCH")&&admin.includes('quedó invalidado por el reinicio'),'La importación todavía permite accesos creados antes del reinicio.');
 assert(admin.includes('id="first-admin-form"')&&admin.includes('bootstrapAdmin')&&appsScript.includes("registerSyncUser('ADM-001'")&&admin.includes('Administrador principal'),'Falta la creación guiada y única del primer Administrador.');
-assert(sync.includes("new Set(['0.18.0','0.19.0'])"),'La versión 0.19.0 no conserva los perfiles 0.18.0 actuales.');
-assert(sync.includes('legacyService:true')&&sync.includes('todavía debe actualizarse a 0.19.0'),'La transición al servicio 0.19.0 puede bloquear el envío de evaluaciones.');
+assert(sync.includes("new Set(['0.18.0','0.19.0','0.20.0'])"),'La versión 0.20.0 no conserva los perfiles 0.18.0 y 0.19.0 actuales.');
+assert(sync.includes('legacyService:true')&&sync.includes('todavía debe actualizarse a 0.20.0'),'La transición al servicio 0.20.0 puede bloquear el envío de evaluaciones.');
 assert(map.includes('getAnalysisRecords')&&!map.includes('records=state.records.filter(recordOk)'),'El mapa no consume el consolidado en línea compartido.');
 assert(sync.includes("['map','charts','sync-monitor']")&&sync.includes('fenologia-remote-snapshot'),'Mapa y gráficos no se actualizan al recibir el consolidado.');
 assert(admin.includes('centralSnapshot')&&admin.includes('applyCentralConfig')&&admin.includes('handleCentralDeactivation'),'La configuración administrativa no puede sincronizarse o aplicar una desactivación central.');
@@ -86,6 +86,9 @@ assert(appsScript.includes('LockService.getScriptLock()'),'Apps Script no bloque
 assert(appsScript.includes('REGISTRO_UUID')&&appsScript.includes('BANDEJA_ENTRADA'),'Apps Script no conserva idempotencia y recuperación.');
 assert(appsScript.includes('CONFIG_CENTRAL')&&appsScript.includes('Usuario desactivado.'),'Apps Script no centraliza configuración y desactivaciones.');
 assert(appsScript.includes('prepareInitialAdmin')&&appsScript.includes('prepareAdminRecovery')&&appsScript.includes('bootstrapAdminAction_')&&appsScript.includes('redeemActivationAction_'),'Apps Script no contiene el arranque, recuperación y activación temporal.');
+assert(appsScript.includes("'TOKEN HASH','CREDENCIAL ACTIVA'")&&appsScript.includes("mode==='MULTI_DEVICE'")&&appsScript.includes('findDeviceCredential_'),'Apps Script no conserva credenciales independientes para PC y celular.');
+assert(appsScript.includes('listDevicesAction_')&&appsScript.includes('setDeviceActiveAction_')&&appsScript.includes('CURRENT_DEVICE'),'Falta listar, revocar o proteger el dispositivo Administrador en uso.');
+assert(userAccess.includes("action:'system-status'")&&userAccess.includes('centralSystemStatus?.adminExists'),'Un dispositivo vacío no reconoce que ADM-001 ya existe en el servidor.');
 assert(appsScript.includes('ACTIVATION_TTL_MS = 24 * 60 * 60 * 1000')&&appsScript.includes('sha256Hex_(normalizeActivationCode_'),'Los códigos no vencen en 24 horas o no se guardan mediante huella.');
 assert(appsScript.includes("clean_(item.userId).toUpperCase()===user.id")&&appsScript.includes('properties.deleteProperty(storedKey)'),'Generar un acceso nuevo no invalida códigos temporales anteriores del mismo usuario.');
 assert(!appsScript.includes('JSON.stringify(body)'),'Apps Script guarda el token sin ocultar en la bandeja de entrada.');

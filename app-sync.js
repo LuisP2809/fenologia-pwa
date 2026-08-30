@@ -1,6 +1,6 @@
 (() => {
-  const VERSION='0.19.0';
-  const COMPATIBLE_PROFILE_VERSIONS=new Set(['0.18.0','0.19.0']);
+  const VERSION='0.20.0';
+  const COMPATIBLE_PROFILE_VERSIONS=new Set(['0.18.0','0.19.0','0.20.0']);
   const CONFIG_KEY='fenologia-sync-config-v1';
   const DEVICE_ID_KEY='fenologia-sync-device-id-v1';
   const ACTIVE_SNAPSHOT_KEY='__ACTIVE_REMOTE_SNAPSHOT__';
@@ -232,7 +232,7 @@
     const payload=Object.keys(extra).sort().map(key=>`${key}=${String(extra[key])}`).join('&');
     const tokenHash=await core().sha256(config.deviceToken);
     const signature=await hmacHex(tokenHash,`${action}|${evaluatorId}|${timestamp}|${nonce}|${payload}`);
-    return {action,evaluatorId,timestamp,nonce,signature,...extra};
+    return {action,evaluatorId,deviceId:syncState.deviceId,timestamp,nonce,signature,...extra};
   }
 
   function jsonp(url,params,timeout=15000){
@@ -353,7 +353,7 @@
     try{
       const received=await transportCentralConfig();
       if(!received?.ok&&/acción no permitida/i.test(received?.message||'')){
-        syncState.remoteConfig=null;syncState.configLastError='El servicio central todavía debe actualizarse a 0.19.0.';
+        syncState.remoteConfig=null;syncState.configLastError='El servicio central todavía debe actualizarse a 0.20.0.';
         return {ok:true,available:false,legacyService:true};
       }
       const response=await rejectCentralResponse(received,'No se pudo consultar la configuración central.');

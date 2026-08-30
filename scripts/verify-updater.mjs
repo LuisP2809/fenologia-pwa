@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
-const source=await readFile('app-updater-0.19.0.js','utf8');
+const source=await readFile('app-updater-0.20.0.js','utf8');
 const assert=(condition,message)=>{if(!condition)throw new Error(message);};
 
 function storage(values={}){
@@ -58,7 +58,7 @@ async function runScenario({controlled,waiting,alreadyReset=false}){
   };
   const context={window,document,location,localStorage,sessionStorage,navigator:{serviceWorker},console};
   vm.createContext(context);
-  vm.runInContext(source,context,{filename:'app-updater-0.19.0.js'});
+  vm.runInContext(source,context,{filename:'app-updater-0.20.0.js'});
   await new Promise(resolve=>setImmediate(resolve));
   await new Promise(resolve=>setImmediate(resolve));
   return {loaded,messages,reloads,html:app.innerHTML,deletedDatabases,local:localStorage.snapshot(),session:sessionStorage.snapshot()};
@@ -70,7 +70,7 @@ assert(legacy.reloads===1,'El puente no recargó después de cambiar el worker.'
 assert(legacy.loaded.length===0,'El puente cargó módulos antes de reemplazar la caché anterior.');
 
 const fresh=await runScenario({controlled:false,waiting:false});
-assert(fresh.loaded.join('|')==='app-db.js?v=0.19.0-login-2|app-bootstrap.js?v=0.19.0-login-2','El inicio limpio no cargó DB y bootstrap con la identidad de caché nueva.');
+assert(fresh.loaded.join('|')==='app-db.js?v=0.20.0-multidevice-1|app-bootstrap.js?v=0.20.0-multidevice-1','El inicio limpio no cargó DB y bootstrap con la identidad de caché nueva.');
 assert(fresh.reloads===0,'El inicio limpio provocó una recarga innecesaria.');
 assert(fresh.deletedDatabases.length===0,'El reinicio de accesos eliminó la base IndexedDB y pudo borrar evaluaciones.');
 assert(!('fenologia-session' in fresh.local)&&!('admin-config-v1' in fresh.local),'El reinicio conservó usuarios o sesiones anteriores.');

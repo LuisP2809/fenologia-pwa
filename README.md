@@ -1,4 +1,4 @@
-# Fenología PWA · 0.19.0
+# Fenología PWA · 0.20.0
 
 Aplicación *offline-first* para capturar, respaldar, consolidar y analizar evaluaciones fenológicas y biométricas desde los roles Evaluador, Supervisor y Administrador.
 
@@ -36,4 +36,4 @@ npm run build:web
 
 El resultado web se genera en `www/`. Las cuentas locales de desarrollo y el simulador central solo se habilitan en `localhost`, `127.0.0.1` o Codespaces. En una instalación real se ejecuta `prepareInitialAdmin()` una vez; el primer dispositivo usa ese código para crear `ADM-001`. Después, el Administrador genera el QR o código de cada Evaluador o Supervisor.
 
-El backend instalable está en `apps-script/` y debe desplegarse por separado. Consulta [PWA_Y_APK.md](PWA_Y_APK.md), [SECURITY_MODEL.md](SECURITY_MODEL.md) y [CHANGELOG_0.19.0.md](CHANGELOG_0.19.0.md).
+El backend instalable está en `apps-script/` y debe desplegarse por separado. Consulta [PWA_Y_APK.md](PWA_Y_APK.md), [SECURITY_MODEL.md](SECURITY_MODEL.md) y [CHANGELOG_0.20.0.md](CHANGELOG_0.20.0.md).

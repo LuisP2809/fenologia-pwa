@@ -1,10 +1,10 @@
-/* Fenología 0.19.0 · servicio central Google Sheets/Drive.
+/* Fenología 0.20.0 · servicio central Google Sheets/Drive.
  * Este archivo se instala como un proyecto independiente de Google Apps Script.
  * Activación simplificada por enlace/QR + código temporal de un solo uso.
  * No contiene tokens, IDs de Drive ni datos reales.
  */
 
-const FENOLOGIA_SYNC_VERSION = '0.19.0';
+const FENOLOGIA_SYNC_VERSION = '0.20.0';
 const CONTROL_ID_PROPERTY = 'FENOLOGIA_CONTROL_SPREADSHEET_ID';
 const ROOT_FOLDER_ID_PROPERTY = 'FENOLOGIA_ROOT_FOLDER_ID';
 const PENDING_ALERT_HOURS_PROPERTY = 'FENOLOGIA_PENDING_ALERT_HOURS';
@@ -40,7 +40,7 @@ const CONTROL_HEADERS = {
   USUARIOS_SYNC:['USUARIO ID','USUARIO','NOMBRE','ROL','TOKEN HASH','ACTIVO','CREADO','ÚLTIMO ACCESO'],
   INDICE_GENERAL:['SEMANA ARCHIVO','CAMPAÑA','AÑO-SEMANA','ARCHIVO ID','ARCHIVO','URL','ESTADO','REGISTROS','CREADO','ACTUALIZADO','CELDAS ASIGNADAS','CAPACIDAD %'],
   REGISTRO_UUID:['UUID','CLAVE LÓGICA','HASH','REVISIÓN','SEMANA ARCHIVO','ARCHIVO ID','RECIBO','SINCRONIZADO','EVALUADOR ID','PAYLOAD JSON','ESTADO','ACTUALIZADO'],
-  DISPOSITIVOS:['DISPOSITIVO ID','EVALUADOR ID','NOMBRE','ROL','ÚLTIMO CONTACTO','PENDIENTES','VERSIÓN APP','ESTADO'],
+  DISPOSITIVOS:['DISPOSITIVO ID','EVALUADOR ID','NOMBRE','ROL','ÚLTIMO CONTACTO','PENDIENTES','VERSIÓN APP','ESTADO','TOKEN HASH','CREDENCIAL ACTIVA','CREDENCIAL CREADA','ÚLTIMO USO CREDENCIAL','ETIQUETA'],
   ALERTAS:['ALERTA ID','CLAVE','TIPO','MENSAJE','EVALUADOR ID','SEMANA ARCHIVO','ESTADO','CREADO','RESUELTO'],
   BANDEJA_ENTRADA:['SOLICITUD ID','EVALUADOR ID','RECIBIDO','ESTADO','PAYLOAD JSON','RESULTADOS JSON','ERROR','PROCESADO'],
   CONFIG_CENTRAL:['CLAVE','REVISIÓN','HASH','CONFIGURACIÓN JSON','ACTUALIZADO','ACTUALIZADO POR']
@@ -77,7 +77,7 @@ function setupFenologia(){
   return {version:FENOLOGIA_SYNC_VERSION,folderId:root.getId(),folderUrl:root.getUrl(),controlId:control.getId(),controlUrl:control.getUrl()};
 }
 
-function registerSyncUser(evaluatorId,name,role,plainToken,username){
+function registerSyncUser(evaluatorId,name,role,plainToken,username,deviceId){
   resetRuntimeCaches_();
   setupFenologia();
   const id=clean_(evaluatorId).toUpperCase();
@@ -96,7 +96,8 @@ function registerSyncUser(evaluatorId,name,role,plainToken,username){
   const created=rowIndex>0?(rows[rowIndex][6]||new Date()):new Date();
   const values=[id,safeUsername,clean_(name),safeRole,sha256Hex_(token),true,created,''];
   if(rowIndex>0)sheet.getRange(rowIndex+1,1,1,values.length).setValues([values]);else sheet.appendRow(values);
-  return {version:FENOLOGIA_SYNC_VERSION,evaluatorId:id,username:safeUsername,name:clean_(name),role:safeRole,deviceToken:token,warning:'Este token se instala automáticamente y no debe compartirse.'};
+  if(deviceId)upsertDeviceCredential_(deviceId,findUser_(id),sha256Hex_(token),true,'Dispositivo principal');
+  return {version:FENOLOGIA_SYNC_VERSION,evaluatorId:id,username:safeUsername,name:clean_(name),role:safeRole,deviceId:normalizeDeviceId_(deviceId),deviceToken:token,warning:'Este token se instala automáticamente y no debe compartirse.'};
 }
 
 function provisionSyncUserFromProperties(){
@@ -143,7 +144,7 @@ function prepareAdminRecovery(){
   resetRuntimeCaches_();setupFenologia();
   const admin=findUser_('ADM-001');
   if(!admin||!admin.active||admin.role!=='Administrador')throw new Error('No existe un ADM-001 activo para recuperar.');
-  const activation=issueActivation_(admin.id,'RECOVERY');
+  const activation=issueActivation_(admin.id,'RECOVERY','MULTI_DEVICE');
   const result={version:FENOLOGIA_SYNC_VERSION,activationCode:activation.code,expiresAt:activation.expiresAt};
   console.log('RECUPERACION_ADMIN='+JSON.stringify(result));
   return result;
@@ -153,17 +154,20 @@ function doPost(event){
   try{
     resetRuntimeCaches_();
     const body=JSON.parse(event&&event.postData&&event.postData.contents||'{}');
-    if(['submit','resolve-alert','publish-config','bootstrap-admin','ping','list-users','create-user','update-user','set-user-active','create-activation','redeem-activation'].indexOf(body.action)<0)return jsonOutput_({ok:false,errorCode:'ACTION_NOT_ALLOWED',message:'Acción no permitida.'});
+    if(['system-status','submit','resolve-alert','publish-config','bootstrap-admin','ping','list-users','list-devices','set-device-active','create-user','update-user','set-user-active','create-activation','redeem-activation'].indexOf(body.action)<0)return jsonOutput_({ok:false,errorCode:'ACTION_NOT_ALLOWED',message:'Acción no permitida.'});
     const lock=LockService.getScriptLock();
     lock.waitLock(30000);
     try{
       let result;
-      if(body.action==='submit')result=submitLocked_(body);
+      if(body.action==='system-status')result=systemStatusAction_();
+      else if(body.action==='submit')result=submitLocked_(body);
       else if(body.action==='resolve-alert')result=resolveAlertLocked_(body);
       else if(body.action==='publish-config')result=publishCentralConfigLocked_(body);
       else if(body.action==='bootstrap-admin')result=bootstrapAdminAction_(body);
       else if(body.action==='ping')result=pingAction_(body);
       else if(body.action==='list-users')result=listUsersAction_(body);
+      else if(body.action==='list-devices')result=listDevicesAction_(body);
+      else if(body.action==='set-device-active')result=setDeviceActiveAction_(body);
       else if(body.action==='create-user')result=createUserAction_(body);
       else if(body.action==='update-user')result=updateUserAction_(body);
       else if(body.action==='set-user-active')result=setUserActiveAction_(body);
@@ -195,9 +199,14 @@ function bootstrapAdminAction_(body){
   const username=normalizeUsername_(body.username);
   if(!name)throw apiError_('INVALID_NAME','Indica el nombre del Administrador.');
   if(!username)throw apiError_('INVALID_USERNAME','El usuario debe tener entre 3 y 30 caracteres: letras, números, punto, guion o guion bajo.');
-  const profile=registerSyncUser('ADM-001',name,'Administrador','',username);
+  const profile=registerSyncUser('ADM-001',name,'Administrador','',username,body.deviceId);
   properties.deleteProperty(key);
   return {ok:true,version:FENOLOGIA_SYNC_VERSION,profile:profile,user:publicSyncUser_(findUser_('ADM-001'))};
+}
+
+function systemStatusAction_(){
+  const admin=findUser_('ADM-001');
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,adminExists:Boolean(admin&&admin.active&&admin.role==='Administrador'),setupAllowed:!listSyncUsers_().length};
 }
 
 function pingAction_(body){
@@ -209,6 +218,23 @@ function pingAction_(body){
 function listUsersAction_(body){
   const actor=authenticatePost_(body);requireAdmin_(actor);touchUser_(actor);
   return {ok:true,version:FENOLOGIA_SYNC_VERSION,users:listSyncUsers_()};
+}
+
+function listDevicesAction_(body){
+  const actor=authenticatePost_(body);requireAdmin_(actor);touchUser_(actor);
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,devices:listDeviceCredentials_()};
+}
+
+function setDeviceActiveAction_(body){
+  const actor=authenticatePost_(body);requireAdmin_(actor);
+  const deviceId=normalizeDeviceId_(body.targetDeviceId);const active=body.active===true;
+  if(!deviceId)throw apiError_('INVALID_DEVICE','El dispositivo no tiene un identificador válido.');
+  if(!active&&deviceId===normalizeDeviceId_(body.deviceId))throw apiError_('CURRENT_DEVICE','No puedes revocar el dispositivo que estás utilizando.');
+  const credential=findDeviceCredential_(deviceId);
+  if(!credential)throw apiError_('DEVICE_NOT_FOUND','El dispositivo no existe o todavía no tiene una credencial independiente.');
+  const sheet=control_().getSheetByName('DISPOSITIVOS');sheet.getRange(credential.row,10).setValue(active);sheet.getRange(credential.row,8).setValue(active?'OFFLINE':'REVOKED');
+  touchUser_(actor);
+  return {ok:true,version:FENOLOGIA_SYNC_VERSION,devices:listDeviceCredentials_()};
 }
 
 function createUserAction_(body){
@@ -257,9 +283,10 @@ function createActivationAction_(body){
   const actor=authenticatePost_(body);requireAdmin_(actor);
   const id=clean_(body.targetUserId).toUpperCase();const target=findUser_(id);
   if(!target)throw apiError_('USER_NOT_FOUND','Usuario no encontrado.');
-  if(target.role==='Administrador')throw apiError_('ADMIN_PROTECTED','El Administrador principal no usa códigos temporales.');
+  if(target.role==='Administrador'&&target.id!==actor.id)throw apiError_('ADMIN_PROTECTED','Solo el Administrador principal puede agregar sus propios dispositivos.');
   if(!target.active)throw apiError_('USER_DISABLED','Activa el usuario antes de generar un acceso.');
-  const activation=issueActivation_(id,actor.id);touchUser_(actor);
+  const mode=target.role==='Administrador'?'MULTI_DEVICE':'ROTATE';
+  const activation=issueActivation_(id,actor.id,mode);touchUser_(actor);
   return {ok:true,version:FENOLOGIA_SYNC_VERSION,activation:activation};
 }
 
@@ -275,11 +302,13 @@ function redeemActivationAction_(body){
   if(new Date(activation.expiresAt).getTime()<=Date.now()){properties.deleteProperty(key);throw apiError_('ACTIVATION_EXPIRED','El código venció. Solicita uno nuevo al Administrador.');}
   const user=findUser_(activation.userId);if(!user){properties.deleteProperty(key);throw apiError_('USER_NOT_FOUND','El usuario asociado ya no existe.');}
   if(!user.active)throw apiError_('USER_DISABLED','Este usuario está desactivado.');
-  const profile=rotateSyncToken_(user.id);properties.deleteProperty(key);touchUser_(findUser_(user.id));
+  const mode=clean_(activation.mode)||'ROTATE';
+  const profile=mode==='MULTI_DEVICE'?issueDeviceProfile_(user.id,body.deviceId,body.deviceLabel):rotateSyncToken_(user.id);
+  properties.deleteProperty(key);touchUser_(findUser_(user.id));
   return {ok:true,version:FENOLOGIA_SYNC_VERSION,profile:profile,user:publicSyncUser_(findUser_(user.id))};
 }
 
-function issueActivation_(userId,actorId){
+function issueActivation_(userId,actorId,mode){
   cleanupExpiredAccessCodes_();const user=findUser_(userId);
   if(!user)throw apiError_('USER_NOT_FOUND','Usuario no encontrado.');
   if(!user.active)throw apiError_('USER_DISABLED','El usuario está desactivado.');
@@ -292,8 +321,16 @@ function issueActivation_(userId,actorId){
   for(let attempt=0;attempt<8;attempt++){code=generateActivationCode_();key=ACTIVATION_PREFIX+sha256Hex_(code);if(!properties.getProperty(key))break;code='';}
   if(!code)throw apiError_('ACTIVATION_ERROR','No se pudo generar un código único. Intenta nuevamente.');
   const expiresAt=new Date(Date.now()+ACTIVATION_TTL_MS).toISOString();
-  properties.setProperty(key,JSON.stringify({userId:user.id,createdBy:actorId,expiresAt:expiresAt}));
-  return {code:formatActivationCode_(code),expiresAt:expiresAt,user:publicSyncUser_(user)};
+  const activationMode=clean_(mode)==='MULTI_DEVICE'?'MULTI_DEVICE':'ROTATE';
+  properties.setProperty(key,JSON.stringify({userId:user.id,createdBy:actorId,mode:activationMode,expiresAt:expiresAt}));
+  return {code:formatActivationCode_(code),mode:activationMode,expiresAt:expiresAt,user:publicSyncUser_(user)};
+}
+
+function issueDeviceProfile_(userId,deviceId,deviceLabel){
+  const user=findUser_(userId);if(!user)throw apiError_('USER_NOT_FOUND','Usuario no encontrado.');
+  const normalizedDeviceId=normalizeDeviceId_(deviceId);if(!normalizedDeviceId)throw apiError_('INVALID_DEVICE','El dispositivo no tiene un identificador válido.');
+  const token=generateToken_();upsertDeviceCredential_(normalizedDeviceId,user,sha256Hex_(token),true,clean_(deviceLabel)||'Dispositivo adicional');
+  return {version:FENOLOGIA_SYNC_VERSION,evaluatorId:user.id,username:user.username,name:user.name,role:user.role,deviceId:normalizedDeviceId,deviceToken:token};
 }
 
 function rotateSyncToken_(userId){
@@ -700,7 +737,15 @@ function authenticatePost_(body){
   const user=findUser_(body.evaluatorId);
   if(!user)throw new Error('Dispositivo no autorizado.');
   if(!user.active)throw new Error('Usuario desactivado.');
-  if(!constantTimeEqual_(sha256Hex_(clean_(body.deviceToken)),user.tokenHash))throw new Error('Dispositivo no autorizado.');
+  const suppliedHash=sha256Hex_(clean_(body.deviceToken));const deviceId=normalizeDeviceId_(body.deviceId);const credential=findDeviceCredential_(deviceId,user.id);
+  if(credential){
+    if(!credential.active)throw new Error('Dispositivo revocado.');
+    if(!constantTimeEqual_(suppliedHash,credential.tokenHash))throw new Error('Dispositivo no autorizado.');
+    touchDeviceCredential_(credential);
+  }else{
+    if(!constantTimeEqual_(suppliedHash,user.tokenHash))throw new Error('Dispositivo no autorizado.');
+    if(user.role==='Administrador'&&deviceId)upsertDeviceCredential_(deviceId,user,user.tokenHash,true,'Dispositivo principal migrado');
+  }
   return user;
 }
 
@@ -712,11 +757,15 @@ function authenticateSignedGet_(params){
   if(!timestamp||Math.abs(Date.now()-timestamp)>5*60*1000)throw new Error('La firma venció.');
   const nonce=clean_(params.nonce);
   if(!/^[A-Za-z0-9_-]{10,160}$/.test(nonce))throw new Error('Nonce no válido.');
+  const deviceId=normalizeDeviceId_(params.deviceId);const credential=findDeviceCredential_(deviceId,user.id);
+  if(credential&&!credential.active)throw new Error('Dispositivo revocado.');
+  const tokenHash=credential?credential.tokenHash:user.tokenHash;
   const payload=signedPayload_(params);
   const text=params.action+'|'+user.id+'|'+String(params.timestamp)+'|'+nonce+'|'+payload;
-  const expected=hmacHex_(user.tokenHash,text);
+  const expected=hmacHex_(tokenHash,text);
   if(!constantTimeEqual_(expected,clean_(params.signature)))throw new Error('Firma de dispositivo no válida.');
-  const cache=CacheService.getScriptCache();const nonceKey='nonce:'+user.id+':'+nonce;
+  if(credential)touchDeviceCredential_(credential);
+  const cache=CacheService.getScriptCache();const nonceKey='nonce:'+user.id+':'+(deviceId||'legacy')+':'+nonce;
   if(cache.get(nonceKey))throw new Error('Solicitud repetida.');
   cache.put(nonceKey,'1',600);
   return user;
@@ -745,6 +794,37 @@ function findUserByUsername_(username){
   return null;
 }
 function publicSyncUser_(user){return {id:user.id,username:user.username,name:user.name,role:user.role,active:user.active};}
+
+function normalizeDeviceId_(value){const id=clean_(value);return /^[A-Za-z0-9._:-]{8,180}$/.test(id)?id:'';}
+function findDeviceCredential_(deviceId,evaluatorId){
+  const id=normalizeDeviceId_(deviceId);if(!id)return null;
+  const rows=sheetValues_(control_().getSheetByName('DISPOSITIVOS'));
+  for(let index=1;index<rows.length;index++){
+    const row=rows[index];if(clean_(row[0])!==id)continue;
+    const userId=clean_(row[1]).toUpperCase();if(evaluatorId&&userId!==clean_(evaluatorId).toUpperCase())return null;
+    const tokenHash=clean_(row[8]);if(!tokenHash)return null;
+    return {row:index+1,deviceId:id,evaluatorId:userId,name:clean_(row[2]),role:clean_(row[3]),lastSeenAt:dateIso_(row[4]),tokenHash:tokenHash,active:row[9]===true||String(row[9]).toUpperCase()==='TRUE',createdAt:dateIso_(row[10]),lastUsedAt:dateIso_(row[11]),label:clean_(row[12])};
+  }
+  return null;
+}
+function upsertDeviceCredential_(deviceId,user,tokenHash,active,label){
+  const id=normalizeDeviceId_(deviceId);if(!id)throw apiError_('INVALID_DEVICE','El dispositivo no tiene un identificador válido.');
+  const sheet=ensureSheet_(control_(),'DISPOSITIVOS',CONTROL_HEADERS.DISPOSITIVOS);const row=findRowByValue_(sheet,1,id);const previous=row?sheet.getRange(row,1,1,13).getValues()[0]:[];
+  const previousUser=clean_(previous[1]).toUpperCase();if(previousUser&&previousUser!==user.id)throw apiError_('DEVICE_ASSIGNED','El dispositivo ya pertenece a otro usuario.');
+  const values=[id,user.id,user.name,user.role,previous[4]||'',Number(previous[5]||0),clean_(previous[6]),active?'OFFLINE':'REVOKED',clean_(tokenHash),active!==false,previous[10]||new Date(),new Date(),clean_(label)||clean_(previous[12])||'Dispositivo'];
+  if(row)sheet.getRange(row,1,1,values.length).setValues([values]);else sheet.appendRow(values);
+  return findDeviceCredential_(id,user.id);
+}
+function touchDeviceCredential_(credential){if(credential&&credential.row)control_().getSheetByName('DISPOSITIVOS').getRange(credential.row,12).setValue(new Date());}
+function listDeviceCredentials_(){
+  const rows=sheetValues_(control_().getSheetByName('DISPOSITIVOS'));const devices=[];
+  for(let index=1;index<rows.length;index++){
+    if(!clean_(rows[index][8]))continue;
+    const credential=findDeviceCredential_(rows[index][0]);if(!credential)continue;
+    devices.push({deviceId:credential.deviceId,evaluatorId:credential.evaluatorId,evaluator:credential.name,role:credential.role,label:credential.label,active:credential.active,createdAt:credential.createdAt,lastUsedAt:credential.lastUsedAt,lastSeenAt:credential.lastSeenAt});
+  }
+  return devices.sort(function(a,b){return String(b.lastUsedAt||b.createdAt).localeCompare(String(a.lastUsedAt||a.createdAt));});
+}
 function listSyncUsers_(){
   const rows=sheetValues_(control_().getSheetByName('USUARIOS_SYNC'));const users=[];
   for(let index=1;index<rows.length;index++){const user=findUser_(rows[index][0]);if(user)users.push(publicSyncUser_(user));}

@@ -64,7 +64,7 @@ await windowObject.FenologiaSync.ready;
 const preparedProfile=await windowObject.FenologiaSync.createProfile({
   endpoint:'https://script.google.com/macros/s/PRUEBA/exec',evaluatorId:'EVA-001',evaluator:'Evaluador 1',role:'Evaluador',deviceToken:'123456789012345678901234'
 });
-assert(preparedProfile.version==='0.19.0'&&preparedProfile.evaluatorId==='EVA-001','El núcleo no genera credenciales de recuperación 0.19.0.');
+assert(preparedProfile.version==='0.20.0'&&preparedProfile.evaluatorId==='EVA-001','El núcleo no genera credenciales de recuperación 0.20.0.');
 assert(downloads.at(-1)?.name==='Perfil-Sync-EVA-001.json','El asistente no descargó el nombre de perfil esperado.');
 const invalidatedProfile={...preparedProfile,version:'0.17.0'};
 let invalidatedRejected=false;

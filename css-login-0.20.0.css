@@ -1,6 +1,6 @@
 /* Hoja independiente para impedir que una caché antigua de escritorio deje los SVG sin tamaño. */
 .login-page{position:relative;isolation:isolate;min-height:100svh;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(420px,.72fr);overflow:hidden;background:#fbfaf5}
-.login-hero{position:relative;max-width:none;min-height:100svh;padding:clamp(38px,6vw,92px);display:flex;align-items:center;justify-content:center;background:#eef1e5 url("assets/login-farm.svg?v=0.19.0-login-2") center/cover no-repeat}
+.login-hero{position:relative;max-width:none;min-height:100svh;padding:clamp(38px,6vw,92px);display:flex;align-items:center;justify-content:center;background:#eef1e5 url("assets/login-farm.svg?v=0.20.0-multidevice-1") center/cover no-repeat}
 .login-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,253,246,.08),rgba(255,253,246,0) 60%),linear-gradient(180deg,rgba(255,252,243,.18),transparent 44%);pointer-events:none}
 .ingleby-wordmark{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:.18em;color:#07552f;font-weight:850;font-size:clamp(30px,3.5vw,55px);letter-spacing:.025em;text-shadow:0 2px 0 rgba(255,255,255,.7)}
 .ingleby-wordmark svg{display:block;width:.74em!important;height:1.02em!important;max-width:.74em;max-height:1.02em;overflow:visible;fill:none!important;stroke:currentColor!important;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}

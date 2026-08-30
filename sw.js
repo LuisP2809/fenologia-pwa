@@ -1,14 +1,14 @@
-const CACHE='fenologia-v0.19.0-login-redesign-2';
-const VERSION='0.19.0';
-const ASSET_BUILD='0.19.0-login-2';
+const CACHE='fenologia-v0.20.0-multidevice-1';
+const VERSION='0.20.0';
+const ASSET_BUILD='0.20.0-multidevice-1';
 const versioned=path=>`${path}?v=${ASSET_BUILD}`;
 const ASSETS=[
   './','./index.html',versioned('./manifest.webmanifest'),
   versioned('./icons/icon-192.png'),versioned('./icons/icon-512.png'),versioned('./icons/icon-maskable.png'),
   versioned('./icons/icon-192.svg'),versioned('./icons/icon-512.svg'),versioned('./icons/icon-maskable.svg'),
   './data/catalogos.json',versioned('./data/lotes-mapa.geojson'),
-  './assets/login-farm.svg?v=0.19.0-login-2',
-  './app-updater-0.19.0.js?build=login-2',versioned('./app-db.js'),versioned('./app-bootstrap.js'),versioned('./app-core.js'),versioned('./app-eval.js'),versioned('./vendor/qrcode.js'),
+  './assets/login-farm.svg?v=0.20.0-multidevice-1',
+  './app-updater-0.20.0.js?build=multidevice-1',versioned('./app-db.js'),versioned('./app-bootstrap.js'),versioned('./app-core.js'),versioned('./app-eval.js'),versioned('./vendor/qrcode.js'),
   versioned('./app-admin.js'),versioned('./app-credentials.js'),versioned('./app-package-security.js'),versioned('./app-security.js'),versioned('./app-workflow-patches.js'),versioned('./app-export-filters.js'),
   versioned('./app-db-ui.js'),versioned('./app-supervisor.js'),versioned('./app-supervisor-role.js'),versioned('./app-supervisor-unified.js'),
   versioned('./app-map.js'),versioned('./app-charts.js'),versioned('./app-admin-complete.js'),versioned('./app-admin-dni-fix.js'),
@@ -20,7 +20,7 @@ const ASSETS=[
   versioned('./css-security.css'),versioned('./css-export-filters.css'),versioned('./css-db.css'),versioned('./css-supervisor.css'),
   versioned('./css-supervisor-role.css'),versioned('./css-supervisor-unified.css'),versioned('./css-mobile-header.css'),versioned('./css-map.css'),
   versioned('./css-charts.css'),versioned('./css-stage-analytics.css'),versioned('./css-admin-complete.css'),versioned('./css-dynamic-parameters.css'),
-  versioned('./css-platform.css'),'./css-login-0.19.0.css?v=login-2',versioned('./css-xlsx-workflow.css'),versioned('./css-sync.css')
+  versioned('./css-platform.css'),'./css-login-0.20.0.css?v=multidevice-1',versioned('./css-xlsx-workflow.css'),versioned('./css-sync.css')
 ];
 
 self.addEventListener('install',event=>{
