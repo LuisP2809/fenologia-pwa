@@ -34,7 +34,8 @@ for(const source of [index,bootstrap,worker])assert(source.includes(version),`La
 assert(index.includes('Content-Security-Policy'),'Falta la política de seguridad de contenido.');
 assert(!index.includes('onclick='),'index.html contiene manejadores en línea incompatibles con CSP.');
 assert(index.includes('app-updater-0.19.0.js')&&updater.includes('activatePendingWorker'),'Falta el puente externo de recuperación para activar la actualización antes del bootstrap.');
-assert(updater.includes("updateViaCache:'none'")&&updater.includes("./sw.js?recovery=0.19.0-cache-1"),'El puente de recuperación no fuerza la descarga del service worker nuevo.');
+assert(updater.includes("updateViaCache:'none'")&&updater.includes("./sw.js?recovery=0.19.0-login-2"),'El puente de recuperación no fuerza la descarga del service worker nuevo.');
+assert(index.includes('css-login-0.19.0.css?v=login-2')&&index.includes('app-updater-0.19.0.js?build=login-2'),'La pantalla de acceso no usa recursos con identidad de caché nueva.');
 assert(!worker.includes('ignoreSearch:true'),'El service worker todavía permite que una versión anterior suplante archivos nuevos.');
 assert(updater.includes("waiting.postMessage({type:'SKIP_WAITING'})")&&updater.includes('location.reload()'),'El puente no activa y recarga la nueva caché.');
 assert(updater.includes("RESET_MARKER='fenologia-access-start-v2'")&&!updater.includes('deleteDatabase('),'El reinicio de accesos puede borrar evaluaciones locales.');

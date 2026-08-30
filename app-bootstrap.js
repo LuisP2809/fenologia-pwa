@@ -1,5 +1,6 @@
 (() => {
   const APP_VERSION = '0.19.0';
+  const ASSET_BUILD = '0.19.0-login-2';
   const scripts = [
     'app-core.js','app-eval.js','app-admin.js','app-credentials.js','app-package-security.js','app-security.js','app-workflow-patches.js','app-export-filters.js','app-db-ui.js','app-supervisor.js','app-supervisor-role.js','app-supervisor-unified.js','app-map.js','app-charts.js','app-admin-complete.js','vendor/qrcode.js','app-user-access-package.js','app-admin-role-cleanup.js','app-dynamic-parameters.js','app-dynamic-supervisor.js','app-stage-analytics.js','app-stage-analytics-ui.js','app-charts-refinement.js','app-platform.js','app-xlsx-workflow.js','app-xlsx-compat.js','app-supervisor-file-analysis.js','app-analysis-source-guard.js','app-evaluator-navigation.js','app-evaluation-flow.js','app-session-security.js','app-sync-core.js','app-sync.js','app-release.js'
   ];
@@ -20,7 +21,7 @@
     if(changed||navigator.serviceWorker?.controller){const next=new URL(location.href);next.searchParams.set('fresh',APP_VERSION);location.replace(next.href);return true;}
     return false;
   }
-  function loadScript(path){return new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=`${path}?v=${APP_VERSION}`;script.async=false;script.onload=resolve;script.onerror=()=>reject(new Error(`No se pudo cargar ${path}.`));document.body.appendChild(script);});}
+  function loadScript(path){return new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=`${path}?v=${ASSET_BUILD}`;script.async=false;script.onload=resolve;script.onerror=()=>reject(new Error(`No se pudo cargar ${path}.`));document.body.appendChild(script);});}
   async function start(){
     if(await resetCodespacesWorker())return;
     loadingView('Preparando tus datos');
